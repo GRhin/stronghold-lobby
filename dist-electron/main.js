@@ -27,18 +27,25 @@ function setupGameHandlers() {
     }
     const argsArray = args.split(" ").filter((arg) => arg.length > 0);
     const cwd = path.dirname(gamePath);
-    console.log(`Launching game: ${gamePath} with args: ${argsArray} in ${cwd}`);
+    console.log(`Launching game: "${gamePath}" with args: ${argsArray} in ${cwd}`);
     try {
-      const child = child_process.execFile(gamePath, argsArray, { cwd });
+      const child = child_process.spawn(`"${gamePath}"`, argsArray, {
+        cwd,
+        detached: true,
+        shell: true,
+        windowsVerbatimArguments: true
+        // Helps with argument parsing on Windows
+      });
       child.on("error", (err) => {
         console.error("Failed to start game:", err);
       });
-      child.on("exit", (code) => {
-        console.log(`Game exited with code ${code}`);
+      child.on("close", (code) => {
+        console.log(`Game process closed with code ${code}`);
         if (mainWindow) {
           mainWindow.webContents.send("game-exited", code);
         }
       });
+      child.unref();
       return { success: true };
     } catch (error) {
       console.error("Launch error:", error);
@@ -80,6 +87,8 @@ function initSteam() {
   try {
     client = steamworks.init(40970);
     console.log("Steam initialized:", client.localplayer.getName());
+    console.log("Client keys:", Object.keys(client));
+    console.log("Localplayer keys:", Object.keys(client.localplayer));
   } catch (err) {
     console.error("Failed to initialize Steam:", err);
   }
@@ -94,8 +103,32 @@ function setupSteamHandlers() {
   });
   electron.ipcMain.handle("get-auth-ticket", async () => {
     if (!client) throw new Error("Steam not initialized");
-    const ticket = await client.auth.getAuthTicketForWebApi("LobbyClient");
-    return ticket.getBytes().toString("hex");
+    try {
+      const ticket = await client.auth.getAuthTicketForWebApi("LobbyClient");
+      return ticket.getBytes().toString("hex");
+    } catch (err) {
+      console.error("Failed to get auth ticket:", err);
+      return null;
+    }
+  });
+  electron.ipcMain.handle("get-steam-friends", () => {
+    if (!client) return [];
+    if (!client.friends) {
+      console.warn("Steam Friends interface not available in this version of steamworks.js");
+      return [
+        { id: "76561198000000001", name: "Sir William (Mock)", status: 1, avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=William" },
+        { id: "76561198000000002", name: "The Snake (Mock)", status: 6, avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Snake" },
+        { id: "76561198000000003", name: "The Rat (Mock)", status: 0, avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Rat" }
+      ];
+    }
+    const friends = client.friends.getFriends(4);
+    return friends.map((f) => ({
+      id: f.getSteamId().steamId64.toString(),
+      name: f.getName(),
+      status: f.getPersonaState(),
+      // 0=Offline, 1=Online, etc.
+      avatar: f.getMediumAvatarUrl()
+    }));
   });
 }
 setupGameHandlers();

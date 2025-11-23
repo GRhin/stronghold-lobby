@@ -1,0 +1,33 @@
+[
+  {
+    "steamId": "76561198000000000",
+    "name": "Test User",
+    "friends": [
+      "76561197992969615"
+    ],
+    "requests": [],
+    "socketId": null,
+    "isOnline": false
+  },
+  {
+    "steamId": "76561197992969615",
+    "name": "GRhin",
+    "friends": [
+      "76561198000000000",
+      "76561198000000002"
+    ],
+    "requests": [],
+    "socketId": "NK_spd6KhNFe67KoAAAB",
+    "isOnline": true
+  },
+  {
+    "steamId": "76561198000000002",
+    "name": "Test User 2",
+    "friends": [
+      "76561197992969615"
+    ],
+    "requests": [],
+    "socketId": null,
+    "isOnline": false
+  }
+]

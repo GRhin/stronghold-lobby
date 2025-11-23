@@ -11,7 +11,8 @@ contextBridge.exposeInMainWorld('electron', {
         return () => ipcRenderer.removeListener('game-exited', subscription)
     },
     getSteamUser: () => ipcRenderer.invoke('get-steam-user'),
-    getAuthTicket: () => ipcRenderer.invoke('get-auth-ticket')
+    getAuthTicket: () => ipcRenderer.invoke('get-auth-ticket'),
+    getSteamFriends: () => ipcRenderer.invoke('get-steam-friends')
 })
 
 // Preload script

@@ -12,7 +12,8 @@ electron.contextBridge.exposeInMainWorld("electron", {
     return () => electron.ipcRenderer.removeListener("game-exited", subscription);
   },
   getSteamUser: () => electron.ipcRenderer.invoke("get-steam-user"),
-  getAuthTicket: () => electron.ipcRenderer.invoke("get-auth-ticket")
+  getAuthTicket: () => electron.ipcRenderer.invoke("get-auth-ticket"),
+  getSteamFriends: () => electron.ipcRenderer.invoke("get-steam-friends")
 });
 window.addEventListener("DOMContentLoaded", () => {
   const replaceText = (selector, text) => {

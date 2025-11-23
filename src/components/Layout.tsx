@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import ReportResultModal from './ReportResultModal'
+import { useUser } from '../context/UserContext'
 
 const Layout: React.FC = () => {
+    const { user } = useUser()
     const [showResultModal, setShowResultModal] = useState(false)
     const [lastGameCode, setLastGameCode] = useState(0)
 
@@ -70,7 +72,7 @@ const Layout: React.FC = () => {
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-gray-700 border-2 border-green-500"></div>
                         <div>
-                            <p className="font-bold text-sm">Lord Crusader</p>
+                            <p className="font-bold text-sm">{user?.name || 'Unknown Lord'}</p>
                             <p className="text-xs text-green-500">Online</p>
                         </div>
                     </div>

@@ -1,5 +1,5 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
-import { execFile } from 'child_process'
+import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 
@@ -32,21 +32,32 @@ export function setupGameHandlers() {
         const argsArray = args.split(' ').filter(arg => arg.length > 0)
         const cwd = path.dirname(gamePath)
 
-        console.log(`Launching game: ${gamePath} with args: ${argsArray} in ${cwd}`)
+        console.log(`Launching game: "${gamePath}" with args: ${argsArray} in ${cwd}`)
 
         try {
-            const child = execFile(gamePath, argsArray, { cwd })
+            // Use spawn with shell: true to avoid EACCES issues on Windows
+            // We quote the gamePath to handle spaces safely when using shell: true
+            const child = spawn(`"${gamePath}"`, argsArray, {
+                cwd,
+                detached: true,
+                shell: true,
+                windowsVerbatimArguments: true // Helps with argument parsing on Windows
+            })
 
             child.on('error', (err) => {
                 console.error('Failed to start game:', err)
             })
 
-            child.on('exit', (code) => {
-                console.log(`Game exited with code ${code}`)
+            // When using shell: true and detached, we might not get exit codes reliably
+            // but we can try to listen for 'close'
+            child.on('close', (code) => {
+                console.log(`Game process closed with code ${code}`)
                 if (mainWindow) {
                     mainWindow.webContents.send('game-exited', code)
                 }
             })
+
+            child.unref()
 
             return { success: true }
         } catch (error: any) {

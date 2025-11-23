@@ -1,27 +1,34 @@
 import React, { useState, useEffect } from 'react'
 import Button from '../components/Button'
-import { io, Socket } from 'socket.io-client'
 import { useSettings } from '../context/SettingsContext'
+import { useUser } from '../context/UserContext'
+import { useNavigate } from 'react-router-dom'
+import { socket } from '../socket'
 
-// Initialize socket outside component to avoid multiple connections
-const socket: Socket = io('http://localhost:3001')
+interface Player {
+    id: string
+    name: string
+    isHost: boolean
+}
 
 interface Lobby {
     id: string
     name: string
-    host: string
+    hostId: string
     hostIp?: string
     map: string
-    players: number
+    players: Player[]
     maxPlayers: number
     status: 'Open' | 'In Game'
     ping: number
 }
 
 const LobbyList: React.FC = () => {
+    const navigate = useNavigate()
     const [lobbies, setLobbies] = useState<Lobby[]>([])
     const [filter, setFilter] = useState('')
     const { gamePath } = useSettings()
+    const { user } = useUser()
 
     useEffect(() => {
         // Request initial list
@@ -32,21 +39,9 @@ const LobbyList: React.FC = () => {
             setLobbies(data)
         })
 
-        socket.on('lobby:joined', async (lobby: Lobby) => {
-            if (!gamePath) {
-                alert('Please configure your Game Path in Settings first!')
-                return
-            }
-
-            alert(`Joined lobby: ${lobby.name}\nHost IP: ${lobby.hostIp}\nLaunching Game...`)
-
-            try {
-                // @ts-ignore
-                await window.electron.launchGame(gamePath, `-connect ${lobby.hostIp}`)
-                console.log(`Launching game connecting to ${lobby.hostIp}`)
-            } catch (err) {
-                alert('Failed to launch game: ' + err)
-            }
+        socket.on('lobby:joined', (lobby: any) => {
+            console.log('Joined lobby, navigating to room...')
+            navigate('/lobby')
         })
 
         socket.on('error', (err: string) => {
@@ -58,28 +53,33 @@ const LobbyList: React.FC = () => {
             socket.off('lobby:joined')
             socket.off('error')
         }
-    }, [gamePath])
+    }, [gamePath, navigate])
 
-    const filteredLobbies = lobbies.filter(lobby =>
-        lobby.name.toLowerCase().includes(filter.toLowerCase()) ||
-        lobby.host.toLowerCase().includes(filter.toLowerCase()) ||
-        lobby.map.toLowerCase().includes(filter.toLowerCase())
-    )
+    const filteredLobbies = lobbies.filter(lobby => {
+        const hostName = lobby.players.find(p => p.isHost)?.name || 'Unknown'
+        return (
+            lobby.name.toLowerCase().includes(filter.toLowerCase()) ||
+            hostName.toLowerCase().includes(filter.toLowerCase()) ||
+            lobby.map.toLowerCase().includes(filter.toLowerCase())
+        )
+    })
 
     const handleJoin = (lobbyId: string) => {
-        socket.emit('lobby:join', lobbyId)
+        socket.emit('lobby:join', {
+            id: lobbyId,
+            playerName: user?.name || 'Unknown Lord'
+        })
     }
 
     const handleCreate = () => {
         console.log('Create button clicked')
-        // prompt() is not supported in Electron by default
         const name = `Lobby ${Math.floor(Math.random() * 1000)}`
         console.log('Lobby name generated:', name)
         if (name) {
             console.log('Emitting lobby:create')
             socket.emit('lobby:create', {
                 name,
-                host: 'Me', // TODO: Get real user name
+                hostName: user?.name || 'Unknown Lord',
                 map: 'Green Valley',
                 maxPlayers: 8
             })
@@ -122,46 +122,49 @@ const LobbyList: React.FC = () => {
 
             {/* Lobby Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {filteredLobbies.map((lobby) => (
-                    <div
-                        key={lobby.id}
-                        className="group bg-surface hover:bg-surface/80 border border-white/5 hover:border-primary/50 rounded-xl p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer relative overflow-hidden"
-                    >
-                        {/* Status Indicator */}
-                        <div className={`absolute top-0 right-0 px-3 py-1 text-xs font-bold rounded-bl-lg ${lobby.status === 'Open' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                            }`}>
-                            {lobby.status}
-                        </div>
-
-                        <h3 className="text-xl font-bold text-primary mb-1 group-hover:text-white transition-colors">{lobby.name}</h3>
-                        <p className="text-sm text-gray-400 mb-4">Host: <span className="text-white">{lobby.host}</span></p>
-
-                        <div className="space-y-2 mb-6">
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-500">Map</span>
-                                <span className="text-gray-300">{lobby.map}</span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-500">Players</span>
-                                <span className="text-gray-300">{lobby.players} / {lobby.maxPlayers}</span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-500">Ping</span>
-                                <span className={`font-mono ${lobby.ping < 50 ? 'text-green-500' : lobby.ping < 100 ? 'text-yellow-500' : 'text-red-500'}`}>
-                                    {lobby.ping}ms
-                                </span>
-                            </div>
-                        </div>
-
-                        <Button
-                            variant="outline"
-                            className="w-full group-hover:bg-primary group-hover:text-black group-hover:border-primary"
-                            onClick={() => handleJoin(lobby.id)}
+                {filteredLobbies.map((lobby) => {
+                    const hostName = lobby.players.find(p => p.isHost)?.name || 'Unknown'
+                    return (
+                        <div
+                            key={lobby.id}
+                            className="group bg-surface hover:bg-surface/80 border border-white/5 hover:border-primary/50 rounded-xl p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer relative overflow-hidden"
                         >
-                            Join Game
-                        </Button>
-                    </div>
-                ))}
+                            {/* Status Indicator */}
+                            <div className={`absolute top-0 right-0 px-3 py-1 text-xs font-bold rounded-bl-lg ${lobby.status === 'Open' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                                }`}>
+                                {lobby.status}
+                            </div>
+
+                            <h3 className="text-xl font-bold text-primary mb-1 group-hover:text-white transition-colors">{lobby.name}</h3>
+                            <p className="text-sm text-gray-400 mb-4">Host: <span className="text-white">{hostName}</span></p>
+
+                            <div className="space-y-2 mb-6">
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-500">Map</span>
+                                    <span className="text-gray-300">{lobby.map}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-500">Players</span>
+                                    <span className="text-gray-300">{lobby.players.length} / {lobby.maxPlayers}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-500">Ping</span>
+                                    <span className={`font-mono ${lobby.ping < 50 ? 'text-green-500' : lobby.ping < 100 ? 'text-yellow-500' : 'text-red-500'}`}>
+                                        {lobby.ping}ms
+                                    </span>
+                                </div>
+                            </div>
+
+                            <Button
+                                variant="outline"
+                                className="w-full group-hover:bg-primary group-hover:text-black group-hover:border-primary"
+                                onClick={() => handleJoin(lobby.id)}
+                            >
+                                Join Game
+                            </Button>
+                        </div>
+                    )
+                })}
             </div>
         </div>
     )

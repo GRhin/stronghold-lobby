@@ -1,9 +1,12 @@
 import React, { useState } from 'react'
 import Button from '../components/Button'
 import { useNavigate } from 'react-router-dom'
+import { useUser } from '../context/UserContext'
+import { socket } from '../socket'
 
 const Auth: React.FC = () => {
     const navigate = useNavigate()
+    const { setUser } = useUser()
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
 
@@ -15,6 +18,11 @@ const Auth: React.FC = () => {
             const user = await window.electron.getSteamUser()
             if (user) {
                 console.log('Steam User:', user)
+                setUser(user)
+
+                // Register with backend
+                socket.emit('auth:login', user)
+
                 // @ts-ignore
                 const ticket = await window.electron.getAuthTicket()
                 console.log('Auth Ticket:', ticket)

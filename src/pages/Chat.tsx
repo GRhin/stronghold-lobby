@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { io, Socket } from 'socket.io-client'
-
-// Reuse the same socket connection if possible, or create a new one
-// In a real app, we'd use a Context Provider for the socket
-const socket: Socket = io('http://localhost:3001')
+import Button from '../components/Button'
+import { socket } from '../socket'
+import { useUser } from '../context/UserContext'
 
 interface Message {
     id: string
@@ -14,6 +12,7 @@ interface Message {
 }
 
 const Chat: React.FC = () => {
+    const { user } = useUser()
     const [activeChannel, setActiveChannel] = useState<'global' | 'lobby'>('global')
     const [message, setMessage] = useState('')
     const [messages, setMessages] = useState<Message[]>([])
@@ -33,7 +32,7 @@ const Chat: React.FC = () => {
 
         const newMessage: Message = {
             id: Date.now().toString(),
-            user: 'Me', // TODO: Get real user
+            user: user?.name || 'Unknown Lord',
             text: message,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             channel: activeChannel
