@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../components/Button'
+import ReportResultModal from '../components/ReportResultModal'
 import { useSettings } from '../context/SettingsContext'
 import { useUser } from '../context/UserContext'
 import { socket } from '../socket'
@@ -9,6 +10,7 @@ interface Player {
     id: string
     name: string
     isHost: boolean
+    rating?: number
 }
 
 interface Lobby {
@@ -20,6 +22,7 @@ interface Lobby {
     maxPlayers: number
     status: 'Open' | 'In Game'
     players: Player[]
+    isRated: boolean
 }
 
 const LobbyRoom: React.FC = () => {
@@ -30,6 +33,12 @@ const LobbyRoom: React.FC = () => {
     const [messages, setMessages] = useState<any[]>([])
     const [chatInput, setChatInput] = useState('')
     const [isHost, setIsHost] = useState(false)
+    const [showReportModal, setShowReportModal] = useState(false)
+    const lobbyRef = useRef<Lobby | null>(null)
+
+    useEffect(() => {
+        lobbyRef.current = lobby
+    }, [lobby])
 
     useEffect(() => {
         // Fetch current lobby state in case we missed the join event or refreshed
@@ -65,6 +74,15 @@ const LobbyRoom: React.FC = () => {
             }
         })
 
+        // @ts-ignore
+        const cleanupExit = window.electron.onGameExited((code) => {
+            console.log('Game exited with code', code)
+            const currentLobby = lobbyRef.current
+            if (currentLobby && currentLobby.isRated && currentLobby.hostId === socket.id) {
+                setShowReportModal(true)
+            }
+        })
+
         socket.on('lobby:notification', (msg: string) => {
             alert(msg)
         })
@@ -83,6 +101,7 @@ const LobbyRoom: React.FC = () => {
             socket.off('game:launch')
             socket.off('lobby:notification')
             socket.off('error')
+            cleanupExit()
         }
     }, [gamePath, navigate])
 
@@ -126,9 +145,11 @@ const LobbyRoom: React.FC = () => {
                 <div className="flex gap-3">
                     <Button variant="secondary" onClick={handleLeave}>Leave Lobby</Button>
                     {isHost && (
-                        <Button variant="primary" onClick={handleLaunch}>
-                            Launch Game ({lobby.players.length}/{lobby.maxPlayers})
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button variant="primary" onClick={handleLaunch}>
+                                Launch Game ({lobby.players.length}/{lobby.maxPlayers})
+                            </Button>
+                        </div>
                     )}
                 </div>
             </div>
@@ -142,6 +163,7 @@ const LobbyRoom: React.FC = () => {
                             <div key={player.id} className="flex items-center justify-between bg-black/20 p-3 rounded">
                                 <div className="flex items-center gap-2">
                                     <span className="font-bold text-gray-200">{player.name}</span>
+                                    {player.rating && <span className="text-xs text-gray-500">({player.rating})</span>}
                                     {player.isHost && <span className="text-xs bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded">HOST</span>}
                                 </div>
                                 {isHost && !player.isHost && (
@@ -194,6 +216,13 @@ const LobbyRoom: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            <ReportResultModal
+                isOpen={showReportModal}
+                onClose={() => setShowReportModal(false)}
+                lobbyId={lobby.id}
+                players={lobby.players}
+            />
         </div>
     )
 }

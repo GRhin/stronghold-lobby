@@ -55,7 +55,7 @@ function createWindow() {
     win.loadURL(VITE_DEV_SERVER_URL)
     win.webContents.openDevTools()
   } else {
-    win.loadFile(path.join(process.env.DIST, 'index.html'))
+    win.loadFile(path.join(process.env.DIST || '', 'index.html'))
   }
 }
 

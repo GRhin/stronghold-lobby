@@ -1,44 +1,101 @@
-import React from 'react'
+import React, { useState } from 'react'
 import Button from './Button'
+import { socket } from '../socket'
+
+interface Player {
+    id: string
+    name: string
+    isHost: boolean
+}
 
 interface ReportResultModalProps {
     isOpen: boolean
     onClose: () => void
-    gameCode: number
+    lobbyId: string
+    players: Player[]
 }
 
-const ReportResultModal: React.FC<ReportResultModalProps> = ({ isOpen, onClose, gameCode }) => {
+const ReportResultModal: React.FC<ReportResultModalProps> = ({ isOpen, onClose, lobbyId, players = [] }) => {
+    const [winnerId, setWinnerId] = useState<string>('')
+    const [loserId, setLoserId] = useState<string>('')
+
     if (!isOpen) return null
+
+    const handleSubmit = () => {
+        if (!winnerId) {
+            alert('Please select a winner')
+            return
+        }
+
+        let finalLoserId = loserId
+
+        // If only 2 players, infer loser
+        if (players.length === 2) {
+            const loser = players.find(p => p.id !== winnerId)
+            if (loser) finalLoserId = loser.id
+        }
+
+        if (!finalLoserId) {
+            alert('Please select a loser')
+            return
+        }
+
+        if (winnerId === finalLoserId) {
+            alert('Winner and Loser cannot be the same person')
+            return
+        }
+
+        socket.emit('game:report_result', {
+            lobbyId,
+            winnerId,
+            loserId: finalLoserId
+        })
+        onClose()
+    }
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
             <div className="bg-surface border border-white/10 rounded-xl p-8 max-w-md w-full shadow-2xl transform transition-all scale-100">
-                <h2 className="text-2xl font-bold text-white mb-4">Game Finished</h2>
+                <h2 className="text-2xl font-bold text-white mb-4">Report Game Result</h2>
                 <p className="text-gray-300 mb-6">
-                    The game process has exited (Code: {gameCode}). Please report the result of the match.
+                    Please report the result of the match to update Elo ratings.
                 </p>
 
-                <div className="space-y-3 mb-8">
-                    <button className="w-full p-4 bg-green-500/10 border border-green-500/30 rounded-lg hover:bg-green-500/20 transition-colors text-left flex items-center gap-3">
-                        <span className="text-2xl">🏆</span>
-                        <div>
-                            <div className="font-bold text-green-400">Victory</div>
-                            <div className="text-xs text-gray-400">I won the match</div>
-                        </div>
-                    </button>
+                <div className="space-y-4 mb-8">
+                    <div>
+                        <label className="block text-sm font-bold text-gray-400 mb-2">Winner</label>
+                        <select
+                            className="w-full bg-black/30 border border-white/10 rounded px-4 py-2 text-white focus:outline-none focus:border-primary"
+                            value={winnerId}
+                            onChange={(e) => setWinnerId(e.target.value)}
+                        >
+                            <option value="">Select Winner</option>
+                            {players.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
 
-                    <button className="w-full p-4 bg-red-500/10 border border-red-500/30 rounded-lg hover:bg-red-500/20 transition-colors text-left flex items-center gap-3">
-                        <span className="text-2xl">💀</span>
+                    {players.length > 2 && (
                         <div>
-                            <div className="font-bold text-red-400">Defeat</div>
-                            <div className="text-xs text-gray-400">I lost the match</div>
+                            <label className="block text-sm font-bold text-gray-400 mb-2">Loser</label>
+                            <select
+                                className="w-full bg-black/30 border border-white/10 rounded px-4 py-2 text-white focus:outline-none focus:border-primary"
+                                value={loserId}
+                                onChange={(e) => setLoserId(e.target.value)}
+                            >
+                                <option value="">Select Loser</option>
+                                {players.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
                         </div>
-                    </button>
+                    )}
                 </div>
 
                 <div className="flex justify-end gap-3">
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button variant="primary" onClick={onClose}>Submit Result</Button>
+                    <Button variant="primary" onClick={handleSubmit}>Submit Result</Button>
                 </div>
             </div>
         </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import Button from '../components/Button'
+
 import { socket } from '../socket'
 import { useUser } from '../context/UserContext'
 

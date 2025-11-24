@@ -21,6 +21,7 @@ interface Lobby {
     maxPlayers: number
     status: 'Open' | 'In Game'
     ping: number
+    isRated: boolean
 }
 
 const LobbyList: React.FC = () => {
@@ -39,7 +40,7 @@ const LobbyList: React.FC = () => {
             setLobbies(data)
         })
 
-        socket.on('lobby:joined', (lobby: any) => {
+        socket.on('lobby:joined', (_) => {
             console.log('Joined lobby, navigating to room...')
             navigate('/lobby')
         })
@@ -81,7 +82,8 @@ const LobbyList: React.FC = () => {
                 name,
                 hostName: user?.name || 'Unknown Lord',
                 map: 'Green Valley',
-                maxPlayers: 8
+                maxPlayers: 8,
+                isRated: window.confirm('Create a Rated Lobby? (Click OK for Rated, Cancel for Unrated)')
             })
         }
     }
@@ -136,7 +138,10 @@ const LobbyList: React.FC = () => {
                             </div>
 
                             <h3 className="text-xl font-bold text-primary mb-1 group-hover:text-white transition-colors">{lobby.name}</h3>
-                            <p className="text-sm text-gray-400 mb-4">Host: <span className="text-white">{hostName}</span></p>
+                            <p className="text-sm text-gray-400 mb-4">
+                                Host: <span className="text-white">{hostName}</span>
+                                {lobby.isRated && <span className="ml-2 text-xs bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded border border-yellow-500/30">RATED</span>}
+                            </p>
 
                             <div className="space-y-2 mb-6">
                                 <div className="flex justify-between text-sm">

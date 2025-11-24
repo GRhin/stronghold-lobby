@@ -54,6 +54,9 @@ io.on('connection', (socket) => {
                 return
             }
 
+            // Store steamId on socket for robust lookup (even if multiple clients use same steamId)
+            socket.steamId = steamUser.steamId
+
             let user = users.find(u => u.steamId === steamUser.steamId)
             if (!user) {
                 // Register new user
@@ -63,7 +66,8 @@ io.on('connection', (socket) => {
                     friends: [], // List of steamIds
                     requests: [], // List of steamIds (incoming)
                     socketId: socket.id,
-                    isOnline: true
+                    isOnline: true,
+                    rating: 1000
                 }
                 users.push(user)
                 saveUsers()
@@ -212,11 +216,14 @@ io.on('connection', (socket) => {
             hostIp: socket.handshake.address === '::1' ? '127.0.0.1' : socket.handshake.address,
             map: data.map || 'Unknown',
             maxPlayers: data.maxPlayers || 8,
+            isRated: !!data.isRated,
             status: 'Open',
             players: [{
                 id: socket.id,
+                steamId: socket.steamId || users.find(u => u.socketId === socket.id)?.steamId,
                 name: data.hostName || 'Unknown Player',
-                isHost: true
+                isHost: true,
+                rating: users.find(u => u.steamId === (socket.steamId || users.find(u => u.socketId === socket.id)?.steamId))?.rating || 1000
             }]
         }
         lobbies.push(newLobby)
@@ -260,8 +267,10 @@ io.on('connection', (socket) => {
         // Add player
         const newPlayer = {
             id: socket.id,
+            steamId: socket.steamId || users.find(u => u.socketId === socket.id)?.steamId,
             name: playerName,
-            isHost: false
+            isHost: false,
+            rating: users.find(u => u.steamId === (socket.steamId || users.find(u => u.socketId === socket.id)?.steamId))?.rating || 1000
         }
         lobby.players.push(newPlayer)
         socket.join(lobbyId)
@@ -320,6 +329,81 @@ io.on('connection', (socket) => {
         } else {
             socket.emit('error', 'Not in a lobby')
         }
+    })
+
+    // --- Game Results & Elo ---
+
+    socket.on('game:report_result', (data) => {
+        // data: { lobbyId, winnerId, loserId }
+        const { lobbyId, winnerId, loserId } = data
+        const lobby = lobbies.find(l => l.id === lobbyId)
+
+        if (!lobby) return
+        if (lobby.hostId !== socket.id) {
+            console.log('Unauthorized result report attempt')
+            return
+        }
+        if (!lobby.isRated) {
+            console.log('Report ignored: Lobby is not rated')
+            return
+        }
+
+        const winner = users.find(u => u.steamId === winnerId) // winnerId is steamId? Or socketId? Let's assume steamId or we need to map from lobby player id
+        // Actually lobby players use socket.id as 'id'. But we need persistent user data.
+        // Let's find the user objects based on the lobby player IDs (socket IDs)
+
+        // Wait, the UI might send steamIds or socketIds. 
+        // Let's assume the UI sends the 'id' from the player object in the lobby, which is socket.id.
+        // We need to map that back to the persistent user.
+
+        const winnerPlayer = lobby.players.find(p => p.id === winnerId)
+        const loserPlayer = lobby.players.find(p => p.id === loserId)
+
+        if (!winnerPlayer || !loserPlayer) {
+            console.error('Winner or Loser not found in lobby')
+            return
+        }
+
+        const winnerUser = users.find(u => u.steamId === winnerPlayer.steamId)
+        const loserUser = users.find(u => u.steamId === loserPlayer.steamId)
+
+        if (!winnerUser || !loserUser) {
+            console.error('Winner or Loser user record not found (lookup by steamId)')
+            return
+        }
+
+        // Calculate Elo
+        const K = 32
+        const rating1 = winnerUser.rating || 1000
+        const rating2 = loserUser.rating || 1000
+
+        const P1 = (1.0 / (1.0 + Math.pow(10, ((rating2 - rating1) / 400))))
+        // P2 would be (1.0 / (1.0 + Math.pow(10, ((rating1 - rating2) / 400))))
+
+        // Update ratings
+        // Winner: Actual Score = 1
+        // Loser: Actual Score = 0
+
+        const newRating1 = Math.round(rating1 + K * (1 - P1))
+        const newRating2 = Math.round(rating2 + K * (0 - (1 - P1))) // P2 = 1 - P1
+
+        console.log(`Elo Update: ${winnerUser.name} (${rating1} -> ${newRating1}), ${loserUser.name} (${rating2} -> ${newRating2})`)
+
+        winnerUser.rating = newRating1
+        loserUser.rating = newRating2
+        saveUsers()
+
+        // Broadcast updates
+        io.emit('user:update', { steamId: winnerUser.steamId, rating: newRating1 })
+        io.emit('user:update', { steamId: loserUser.steamId, rating: newRating2 })
+
+        // Notify lobby
+        io.to(lobby.id).emit('lobby:notification', `Game Over! ${winnerUser.name} won against ${loserUser.name}. Ratings updated.`)
+
+        // Reset lobby status to Open? Or keep In Game? Usually after result, back to lobby.
+        lobby.status = 'Open'
+        io.emit('lobby:list', lobbies)
+        io.to(lobby.id).emit('lobby:update', lobby)
     })
 
     // --- Chat Events ---

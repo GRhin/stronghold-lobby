@@ -7,7 +7,8 @@
     ],
     "requests": [],
     "socketId": null,
-    "isOnline": false
+    "isOnline": false,
+    "rating": 1000
   },
   {
     "steamId": "76561197992969615",
@@ -17,8 +18,9 @@
       "76561198000000002"
     ],
     "requests": [],
-    "socketId": "NK_spd6KhNFe67KoAAAB",
-    "isOnline": true
+    "socketId": "jpTgy0dy51PoVgTYAAAF",
+    "isOnline": true,
+    "rating": 1000
   },
   {
     "steamId": "76561198000000002",
@@ -28,6 +30,7 @@
     ],
     "requests": [],
     "socketId": null,
-    "isOnline": false
+    "isOnline": false,
+    "rating": 1000
   }
 ]

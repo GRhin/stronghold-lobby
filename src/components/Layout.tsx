@@ -1,26 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
-import ReportResultModal from './ReportResultModal'
 import { useUser } from '../context/UserContext'
 
 const Layout: React.FC = () => {
     const { user } = useUser()
-    const [showResultModal, setShowResultModal] = useState(false)
-    const [lastGameCode, setLastGameCode] = useState(0)
-
-    useEffect(() => {
-        // Listen for game exit events
-        // @ts-ignore
-        const removeListener = window.electron?.onGameExited((code) => {
-            console.log('Game exited with code:', code)
-            setLastGameCode(code)
-            setShowResultModal(true)
-        })
-
-        return () => {
-            if (removeListener) removeListener()
-        }
-    }, [])
 
     const navItems = [
         { name: 'Lobbies', path: '/lobbies', icon: '🏰' },
@@ -31,11 +14,6 @@ const Layout: React.FC = () => {
 
     return (
         <div className="flex h-screen bg-background text-white overflow-hidden">
-            <ReportResultModal
-                isOpen={showResultModal}
-                onClose={() => setShowResultModal(false)}
-                gameCode={lastGameCode}
-            />
 
             {/* Sidebar */}
             <aside className="w-64 bg-surface border-r border-white/10 flex flex-col">
