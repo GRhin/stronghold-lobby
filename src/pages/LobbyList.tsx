@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import Button from '../components/Button'
+import CreateLobbyModal from '../components/CreateLobbyModal'
 import { useSettings } from '../context/SettingsContext'
 import { useUser } from '../context/UserContext'
 import { useNavigate } from 'react-router-dom'
@@ -28,6 +29,7 @@ const LobbyList: React.FC = () => {
     const navigate = useNavigate()
     const [lobbies, setLobbies] = useState<Lobby[]>([])
     const [filter, setFilter] = useState('')
+    const [showCreateModal, setShowCreateModal] = useState(false)
     const { gamePath } = useSettings()
     const { user } = useUser()
 
@@ -73,19 +75,18 @@ const LobbyList: React.FC = () => {
     }
 
     const handleCreate = () => {
-        console.log('Create button clicked')
-        const name = `Lobby ${Math.floor(Math.random() * 1000)}`
-        console.log('Lobby name generated:', name)
-        if (name) {
-            console.log('Emitting lobby:create')
-            socket.emit('lobby:create', {
-                name,
-                hostName: user?.name || 'Unknown Lord',
-                map: 'Green Valley',
-                maxPlayers: 8,
-                isRated: window.confirm('Create a Rated Lobby? (Click OK for Rated, Cancel for Unrated)')
-            })
-        }
+        setShowCreateModal(true)
+    }
+
+    const handleCreateLobby = (name: string, isRated: boolean) => {
+        console.log('Creating lobby:', name, 'Rated:', isRated)
+        socket.emit('lobby:create', {
+            name,
+            hostName: user?.name || 'Unknown Lord',
+            map: 'Green Valley',
+            maxPlayers: 8,
+            isRated
+        })
     }
 
     return (
@@ -171,6 +172,14 @@ const LobbyList: React.FC = () => {
                     )
                 })}
             </div>
+
+            {/* Create Lobby Modal */}
+            <CreateLobbyModal
+                isOpen={showCreateModal}
+                onClose={() => setShowCreateModal(false)}
+                onCreate={handleCreateLobby}
+                defaultName={`Lobby ${Math.floor(Math.random() * 1000)}`}
+            />
         </div>
     )
 }

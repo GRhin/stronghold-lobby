@@ -4,6 +4,7 @@ import Button from '../components/Button'
 import ReportResultModal from '../components/ReportResultModal'
 import { useSettings } from '../context/SettingsContext'
 import { useUser } from '../context/UserContext'
+import { useLobby } from '../context/LobbyContext'
 import { socket } from '../socket'
 
 interface Player {
@@ -29,6 +30,7 @@ const LobbyRoom: React.FC = () => {
     const navigate = useNavigate()
     const { gamePath } = useSettings()
     const { user } = useUser()
+    const { setCurrentLobby, clearCurrentLobby } = useLobby()
     const [lobby, setLobby] = useState<Lobby | null>(null)
     const [messages, setMessages] = useState<any[]>([])
     const [chatInput, setChatInput] = useState('')
@@ -48,11 +50,13 @@ const LobbyRoom: React.FC = () => {
         socket.on('lobby:update', (updatedLobby: Lobby) => {
             setLobby(updatedLobby)
             setIsHost(updatedLobby.hostId === socket.id)
+            setCurrentLobby({ id: updatedLobby.id, name: updatedLobby.name })
         })
 
         socket.on('lobby:joined', (joinedLobby: Lobby) => {
             setLobby(joinedLobby)
             setIsHost(joinedLobby.hostId === socket.id)
+            setCurrentLobby({ id: joinedLobby.id, name: joinedLobby.name })
         })
 
         socket.on('chat:message', (msg: any) => {
@@ -107,6 +111,7 @@ const LobbyRoom: React.FC = () => {
 
     const handleLeave = () => {
         socket.emit('lobby:leave')
+        clearCurrentLobby()
         navigate('/lobbies')
     }
 

@@ -1,9 +1,11 @@
 import React from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useUser } from '../context/UserContext'
+import { useLobby } from '../context/LobbyContext'
 
 const Layout: React.FC = () => {
     const { user } = useUser()
+    const { currentLobby } = useLobby()
 
     const navItems = [
         { name: 'Lobbies', path: '/lobbies', icon: '🏰' },
@@ -28,6 +30,26 @@ const Layout: React.FC = () => {
                 </div>
 
                 <nav className="flex-1 p-4 space-y-2">
+                    {currentLobby && (
+                        <>
+                            <NavLink
+                                to="/lobby"
+                                className={({ isActive }) =>
+                                    `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${isActive
+                                        ? 'bg-primary/20 text-primary border border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.1)]'
+                                        : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                                    }`
+                                }
+                            >
+                                <span className="text-xl">🎮</span>
+                                <div className="flex flex-col flex-1 min-w-0">
+                                    <span className="font-medium truncate">{currentLobby.name}</span>
+                                    <span className="text-xs text-gray-500">Current Lobby</span>
+                                </div>
+                            </NavLink>
+                            <div className="border-t border-white/10 my-2"></div>
+                        </>
+                    )}
                     {navItems.map((item) => (
                         <NavLink
                             key={item.name}
