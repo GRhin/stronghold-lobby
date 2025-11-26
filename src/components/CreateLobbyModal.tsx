@@ -1,38 +1,67 @@
 import React, { useState } from 'react'
 import Button from './Button'
 
+/**
+ * Props for the CreateLobbyModal component
+ */
 interface CreateLobbyModalProps {
-    isOpen: boolean
-    onClose: () => void
-    onCreate: (name: string, isRated: boolean) => void
-    defaultName?: string
+    isOpen: boolean                                     // Controls modal visibility
+    onClose: () => void                                 // Callback when modal is closed
+    onCreate: (name: string, isRated: boolean) => void  // Callback when lobby is created with name and rated status
+    defaultName?: string                                // Optional default lobby name
 }
 
+/**
+ * CreateLobbyModal component provides a styled modal for creating a new lobby
+ * Matches the design of ReportResultModal for consistency
+ * 
+ * @param isOpen - Controls whether the modal is visible
+ * @param onClose - Function to call when closing the modal
+ * @param onCreate - Function to call when creating the lobby
+ * @param defaultName - Optional default name for the lobby
+ */
 const CreateLobbyModal: React.FC<CreateLobbyModalProps> = ({ isOpen, onClose, onCreate, defaultName = '' }) => {
+    // State for lobby name input (initialized with defaultName)
     const [lobbyName, setLobbyName] = useState<string>(defaultName)
+
+    // State for ranked checkbox (defaults to false/unranked)
     const [isRated, setIsRated] = useState<boolean>(false)
 
+    // Don't render anything if modal is not open
     if (!isOpen) return null
 
+    /**
+     * Handles form submission when user clicks "Create Lobby"
+     * Validates lobby name and calls onCreate callback
+     */
     const handleSubmit = () => {
+        // Validate that lobby name is not empty
         if (!lobbyName.trim()) {
             alert('Please enter a lobby name')
             return
         }
 
+        // Call the onCreate callback with lobby details
         onCreate(lobbyName, isRated)
+
+        // Close the modal
         onClose()
     }
 
     return (
+        // Modal backdrop - covers entire screen with semi-transparent black
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            {/* Modal container with styling matching ReportResultModal */}
             <div className="bg-surface border border-white/10 rounded-xl p-8 max-w-md w-full shadow-2xl transform transition-all scale-100">
+                {/* Modal header */}
                 <h2 className="text-2xl font-bold text-white mb-4">Create Lobby</h2>
                 <p className="text-gray-300 mb-6">
                     Set up your lobby and invite players to join your kingdom.
                 </p>
 
+                {/* Form fields */}
                 <div className="space-y-4 mb-8">
+                    {/* Lobby name input */}
                     <div>
                         <label className="block text-sm font-bold text-gray-400 mb-2">Lobby Name</label>
                         <input
@@ -45,6 +74,7 @@ const CreateLobbyModal: React.FC<CreateLobbyModalProps> = ({ isOpen, onClose, on
                         />
                     </div>
 
+                    {/* Ranked checkbox */}
                     <div className="flex items-center gap-3">
                         <input
                             type="checkbox"
@@ -59,6 +89,7 @@ const CreateLobbyModal: React.FC<CreateLobbyModalProps> = ({ isOpen, onClose, on
                     </div>
                 </div>
 
+                {/* Action buttons */}
                 <div className="flex justify-end gap-3">
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
                     <Button variant="primary" onClick={handleSubmit}>Create Lobby</Button>
