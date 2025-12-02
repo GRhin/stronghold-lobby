@@ -1,11 +1,11 @@
 import React from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useUser } from '../context/UserContext'
-import { useLobby } from '../context/LobbyContext'
+import { useSteam } from '../context/SteamContext'
 
 const Layout: React.FC = () => {
     const { user } = useUser()
-    const { currentLobby } = useLobby()
+    const { currentLobby } = useSteam()
 
     const navItems = [
         { name: 'Lobbies', path: '/lobbies', icon: '🏰' },
@@ -41,10 +41,12 @@ const Layout: React.FC = () => {
                                     }`
                                 }
                             >
-                                <span className="text-xl">🎮</span>
+                                <span className="text-xl">{currentLobby.gameMode === 'extreme' ? '⚡' : '🎮'}</span>
                                 <div className="flex flex-col flex-1 min-w-0">
                                     <span className="font-medium truncate">{currentLobby.name}</span>
-                                    <span className="text-xs text-gray-500">Current Lobby</span>
+                                    <span className="text-xs text-gray-500">
+                                        {currentLobby.gameMode === 'extreme' ? 'Extreme Lobby' : 'Current Lobby'}
+                                    </span>
                                 </div>
                             </NavLink>
                             <div className="border-t border-white/10 my-2"></div>

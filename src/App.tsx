@@ -9,26 +9,29 @@ import Layout from './components/Layout'
 import { SettingsProvider } from './context/SettingsContext'
 import { UserProvider } from './context/UserContext'
 import { LobbyProvider } from './context/LobbyContext'
+import { SteamProvider } from './context/SteamContext'
 
 function App() {
   return (
     <SettingsProvider>
       <UserProvider>
         <LobbyProvider>
-          <HashRouter>
-            <div className="min-h-screen bg-background text-white font-sans">
-              <Routes>
-                <Route path="/" element={<Auth />} />
-                <Route element={<Layout />}>
-                  <Route path="/lobbies" element={<LobbyList />} />
-                  <Route path="/lobby" element={<LobbyRoom />} />
-                  <Route path="/chat" element={<Chat />} />
-                  <Route path="/friends" element={<Friends />} />
-                  <Route path="/settings" element={<Settings />} />
-                </Route>
-              </Routes>
-            </div>
-          </HashRouter>
+          <SteamProvider>
+            <HashRouter>
+              <div className="min-h-screen bg-background text-white font-sans">
+                <Routes>
+                  <Route path="/" element={<Auth />} />
+                  <Route element={<Layout />}>
+                    <Route path="/lobbies" element={<LobbyList />} />
+                    <Route path="/lobby" element={<LobbyRoom />} />
+                    <Route path="/chat" element={<Chat />} />
+                    <Route path="/friends" element={<Friends />} />
+                    <Route path="/settings" element={<Settings />} />
+                  </Route>
+                </Routes>
+              </div>
+            </HashRouter>
+          </SteamProvider>
         </LobbyProvider>
       </UserProvider>
     </SettingsProvider>

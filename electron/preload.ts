@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('electron', {
     selectGamePath: () => ipcRenderer.invoke('select-game-path'),
     launchGame: (path: string, args: string) => ipcRenderer.invoke('launch-game', path, args),
+    launchSteamGame: (args: string, gameMode?: 'crusader' | 'extreme') => ipcRenderer.invoke('launch-steam-game', args, gameMode),
     downloadFile: (url: string, filename: string, targetFolder: string) => ipcRenderer.invoke('download-file', url, filename, targetFolder),
     saveSettings: (settings: any) => console.log('Save settings (mock)', settings), // Placeholder
     onGameExited: (callback: (code: number) => void) => {
@@ -12,7 +13,12 @@ contextBridge.exposeInMainWorld('electron', {
     },
     getSteamUser: () => ipcRenderer.invoke('get-steam-user'),
     getAuthTicket: () => ipcRenderer.invoke('get-auth-ticket'),
-    getSteamFriends: () => ipcRenderer.invoke('get-steam-friends')
+    getSteamFriends: () => ipcRenderer.invoke('get-steam-friends'),
+    createLobby: (maxMembers: number, lobbyName?: string, gameMode?: 'crusader' | 'extreme') => ipcRenderer.invoke('steam-create-lobby', maxMembers, lobbyName, gameMode),
+    getLobbies: () => ipcRenderer.invoke('steam-get-lobbies'),
+    joinLobby: (lobbyId: string) => ipcRenderer.invoke('steam-join-lobby', lobbyId),
+    leaveLobby: () => ipcRenderer.invoke('steam-leave-lobby'),
+    getLobbyMembers: () => ipcRenderer.invoke('steam-get-lobby-members')
 })
 
 // Preload script

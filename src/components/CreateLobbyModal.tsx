@@ -7,7 +7,7 @@ import Button from './Button'
 interface CreateLobbyModalProps {
     isOpen: boolean                                     // Controls modal visibility
     onClose: () => void                                 // Callback when modal is closed
-    onCreate: (name: string, isRated: boolean) => void  // Callback when lobby is created with name and rated status
+    onCreate: (name: string, isRated: boolean, gameMode: 'crusader' | 'extreme') => void  // Callback when lobby is created
     defaultName?: string                                // Optional default lobby name
 }
 
@@ -27,6 +27,9 @@ const CreateLobbyModal: React.FC<CreateLobbyModalProps> = ({ isOpen, onClose, on
     // State for ranked checkbox (defaults to false/unranked)
     const [isRated, setIsRated] = useState<boolean>(false)
 
+    // State for game mode (defaults to regular crusader)
+    const [gameMode, setGameMode] = useState<'crusader' | 'extreme'>('crusader')
+
     // Don't render anything if modal is not open
     if (!isOpen) return null
 
@@ -42,7 +45,7 @@ const CreateLobbyModal: React.FC<CreateLobbyModalProps> = ({ isOpen, onClose, on
         }
 
         // Call the onCreate callback with lobby details
-        onCreate(lobbyName, isRated)
+        onCreate(lobbyName, isRated, gameMode)
 
         // Close the modal
         onClose()
@@ -86,6 +89,19 @@ const CreateLobbyModal: React.FC<CreateLobbyModalProps> = ({ isOpen, onClose, on
                         <label htmlFor="isRated" className="text-sm font-bold text-gray-400 cursor-pointer select-none">
                             Ranked Match <span className="text-xs text-gray-500">(Affects Elo ratings)</span>
                         </label>
+                    </div>
+
+                    {/* Game mode selection */}
+                    <div>
+                        <label className="block text-sm font-bold text-gray-400 mb-2">Game Mode</label>
+                        <select
+                            className="w-full bg-black/30 border border-white/10 rounded px-4 py-2 text-white focus:outline-none focus:border-primary cursor-pointer"
+                            value={gameMode}
+                            onChange={(e) => setGameMode(e.target.value as 'crusader' | 'extreme')}
+                        >
+                            <option value="crusader">Stronghold Crusader</option>
+                            <option value="extreme">Stronghold Crusader Extreme</option>
+                        </select>
                     </div>
                 </div>
 

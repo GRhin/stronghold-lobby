@@ -1,0 +1,22 @@
+export interface ElectronAPI {
+    selectGamePath: () => Promise<string | null>
+    launchGame: (path: string, args: string) => Promise<{ success: boolean; error?: string }>
+    launchSteamGame: (args: string, gameMode?: 'crusader' | 'extreme') => Promise<{ success: boolean; error?: string }>
+    downloadFile: (url: string, filename: string, targetFolder: string) => Promise<string>
+    saveSettings: (settings: any) => void
+    onGameExited: (callback: (code: number) => void) => () => void
+    getSteamUser: () => Promise<{ name: string; steamId: string } | null>
+    getAuthTicket: () => Promise<string | null>
+    getSteamFriends: () => Promise<any[]>
+    createLobby: (maxMembers: number, lobbyName?: string, gameMode?: 'crusader' | 'extreme') => Promise<{ id: string; owner: string; name: string; gameMode: 'crusader' | 'extreme' }>
+    getLobbies: () => Promise<Array<{ id: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme' }>>
+    joinLobby: (lobbyId: string) => Promise<{ id: string; owner: string }>
+    leaveLobby: () => Promise<void>
+    getLobbyMembers: () => Promise<Array<{ id: string; name: string }>>
+}
+
+declare global {
+    interface Window {
+        electron: ElectronAPI
+    }
+}

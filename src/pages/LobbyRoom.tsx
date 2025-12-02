@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../components/Button'
-import ReportResultModal from '../components/ReportResultModal'
+// import ReportResultModal from '../components/ReportResultModal'
 import { useSettings } from '../context/SettingsContext'
 import { useUser } from '../context/UserContext'
-import { useLobby } from '../context/LobbyContext'
-import { socket } from '../socket'
+// import { useLobby } from '../context/LobbyContext'
+// import { socket } from '../socket'
+import { useSteam } from '../context/SteamContext'
 
+/*
 interface Player {
     id: string
     name: string
@@ -25,17 +27,23 @@ interface Lobby {
     players: Player[]
     isRated: boolean
 }
+*/
 
 const LobbyRoom: React.FC = () => {
     const navigate = useNavigate()
     const { gamePath } = useSettings()
     const { user } = useUser()
-    const { setCurrentLobby, clearCurrentLobby } = useLobby()
-    const [lobby, setLobby] = useState<Lobby | null>(null)
+    // const { setCurrentLobby, clearCurrentLobby } = useLobby()
+    const { currentLobby, leaveLobby } = useSteam()
+
+    // const [lobby, setLobby] = useState<Lobby | null>(null)
     const [messages, setMessages] = useState<any[]>([])
     const [chatInput, setChatInput] = useState('')
-    const [isHost, setIsHost] = useState(false)
-    const [showReportModal, setShowReportModal] = useState(false)
+    // const [showReportModal, setShowReportModal] = useState(false)
+
+    const isHost = currentLobby && user ? currentLobby.owner === user.steamId : false
+
+    /*
     const lobbyRef = useRef<Lobby | null>(null)
 
     useEffect(() => {
@@ -108,29 +116,41 @@ const LobbyRoom: React.FC = () => {
             cleanupExit()
         }
     }, [gamePath, navigate])
+    */
 
-    const handleLeave = () => {
-        socket.emit('lobby:leave')
-        clearCurrentLobby()
+    const handleLeave = async () => {
+        await leaveLobby()
         navigate('/lobbies')
     }
 
-    const handleLaunch = () => {
-        socket.emit('lobby:launch')
+    const handleLaunch = async () => {
+        // For Steam Lobbies, we rely on the game to handle the connection via Steamworks
+        // Host launches normally (or with specific args if needed)
+        // Clients launch with +connect_lobby <id>
+
+        try {
+            if (!currentLobby) return
+
+            const args = `+connect_lobby ${currentLobby.id}`
+            console.log(isHost ? 'Host launching game via Steam...' : 'Client joining game via Steam...', args, 'Mode:', currentLobby.gameMode)
+
+            // Use the new Steam launch method with game mode
+            await window.electron.launchSteamGame(args, currentLobby.gameMode)
+        } catch (err) {
+            console.error('Failed to launch game:', err)
+            alert('Failed to launch game')
+        }
     }
 
     const handleSendChat = () => {
         if (!chatInput.trim()) return
-        socket.emit('chat:send', {
-            user: user?.name || 'Unknown Lord',
-            text: chatInput,
-            channel: 'lobby',
-            timestamp: new Date().toLocaleTimeString()
-        })
+        // socket.emit('chat:send', { ... })
+        // For now, chat is disabled or local only
+        setMessages(prev => [...prev, { user: user?.name, text: chatInput, timestamp: new Date().toLocaleTimeString() }])
         setChatInput('')
     }
 
-    if (!lobby) {
+    if (!currentLobby) {
         return (
             <div className="flex flex-col items-center justify-center h-full">
                 <p className="text-gray-400 mb-4">Connecting to lobby...</p>
@@ -144,18 +164,16 @@ const LobbyRoom: React.FC = () => {
             {/* Header */}
             <div className="flex justify-between items-center bg-surface p-6 rounded-xl border border-white/5">
                 <div>
-                    <h1 className="text-3xl font-bold text-white mb-1">{lobby.name}</h1>
-                    <p className="text-gray-400">Map: <span className="text-white">{lobby.map}</span> • Status: <span className="text-primary">{lobby.status}</span></p>
+                    <h1 className="text-3xl font-bold text-white mb-1">{currentLobby.name}</h1>
+                    <p className="text-gray-400">Lobby ID: <span className="text-white">{currentLobby.id}</span></p>
                 </div>
                 <div className="flex gap-3">
                     <Button variant="secondary" onClick={handleLeave}>Leave Lobby</Button>
-                    {isHost && (
-                        <div className="flex gap-2">
-                            <Button variant="primary" onClick={handleLaunch}>
-                                Launch Game ({lobby.players.length}/{lobby.maxPlayers})
-                            </Button>
-                        </div>
-                    )}
+                    <div className="flex gap-2">
+                        <Button variant="primary" onClick={handleLaunch}>
+                            {isHost ? 'Launch Game' : 'Launch Game'}
+                        </Button>
+                    </div>
                 </div>
             </div>
 
@@ -164,38 +182,28 @@ const LobbyRoom: React.FC = () => {
                 <div className="w-1/3 bg-surface rounded-xl border border-white/5 p-4 flex flex-col">
                     <h2 className="text-xl font-bold text-white mb-4 border-b border-white/10 pb-2">Players</h2>
                     <div className="space-y-2 overflow-y-auto flex-1">
-                        {lobby.players.map(player => (
+                        {currentLobby.members.map(player => (
                             <div key={player.id} className="flex items-center justify-between bg-black/20 p-3 rounded">
                                 <div className="flex items-center gap-2">
                                     <span className="font-bold text-gray-200">{player.name}</span>
-                                    {player.rating && <span className="text-xs text-gray-500">({player.rating})</span>}
-                                    {player.isHost && <span className="text-xs bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded">HOST</span>}
+                                    {player.id === currentLobby.owner && <span className="text-xs bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded">HOST</span>}
                                 </div>
-                                {isHost && !player.isHost && (
-                                    <div className="flex gap-2">
-                                        <button
-                                            className="text-xs text-yellow-400 hover:text-yellow-300"
-                                            onClick={() => socket.emit('lobby:transferHost', player.id)}
-                                        >
-                                            Make Host
-                                        </button>
-                                        <button className="text-xs text-red-400 hover:text-red-300">Kick</button>
-                                    </div>
-                                )}
                             </div>
                         ))}
-                        {Array.from({ length: lobby.maxPlayers - lobby.players.length }).map((_, i) => (
+                        {/*
+                        {Array.from({ length: 8 - currentLobby.members.length }).map((_, i) => (
                             <div key={`empty-${i}`} className="p-3 rounded border border-white/5 border-dashed text-gray-600 text-center text-sm">
                                 Empty Slot
                             </div>
                         ))}
+                        */}
                     </div>
                 </div>
 
                 {/* Lobby Chat */}
                 <div className="flex-1 bg-surface rounded-xl border border-white/5 flex flex-col overflow-hidden">
                     <div className="p-4 border-b border-white/10 bg-black/20">
-                        <h2 className="font-bold text-white">Lobby Chat</h2>
+                        <h2 className="font-bold text-white">Lobby Chat (Local Only)</h2>
                     </div>
 
                     <div className="flex-1 p-4 overflow-y-auto space-y-2">
@@ -222,12 +230,14 @@ const LobbyRoom: React.FC = () => {
                 </div>
             </div>
 
+            {/*
             <ReportResultModal
                 isOpen={showReportModal}
                 onClose={() => setShowReportModal(false)}
                 lobbyId={lobby.id}
                 players={lobby.players}
             />
+            */}
         </div>
     )
 }

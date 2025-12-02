@@ -1,7 +1,8 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
 import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
+import { getGameInstallDir } from './steam'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -59,6 +60,55 @@ export function setupGameHandlers() {
 
             child.unref()
 
+            return { success: true }
+        } catch (error: any) {
+            console.error('Launch error:', error)
+            return { success: false, error: error.message }
+        }
+    })
+
+
+    // Handle launching via Steam protocol (now using auto-detected path)
+    ipcMain.handle('launch-steam-game', async (_, args: string, gameMode: 'crusader' | 'extreme' = 'crusader') => {
+        console.log('Attempting to auto-detect game path...')
+        const installDir = getGameInstallDir()
+
+        if (!installDir) {
+            console.error('Could not detect game install directory')
+            // Fallback to steam:// protocol if detection fails
+            const encodedArgs = encodeURIComponent(args).replace(/%2B/g, '+')
+            const url = `steam://run/40970//${encodedArgs}`
+            console.log('Fallback to Steam URL:', url)
+            try {
+                await shell.openExternal(url)
+                return { success: true }
+            } catch (error: any) {
+                return { success: false, error: error.message }
+            }
+        }
+
+        // Determine the executable based on game mode
+        const exeName = gameMode === 'extreme' ? 'Stronghold_Crusader_Extreme.exe' : 'Stronghold Crusader.exe'
+        const gamePath = path.join(installDir, exeName)
+        console.log('Auto-detected game path:', gamePath, '(Mode:', gameMode, ')')
+
+        if (!fs.existsSync(gamePath)) {
+            console.error('Executable not found at:', gamePath)
+            return { success: false, error: `Executable not found: ${exeName}` }
+        }
+
+        // Use the existing spawn logic
+        const argsArray = args.split(' ').filter(arg => arg.length > 0)
+
+        try {
+            const child = spawn(`"${gamePath}"`, argsArray, {
+                cwd: installDir,
+                detached: true,
+                shell: true,
+                windowsVerbatimArguments: true
+            })
+
+            child.unref()
             return { success: true }
         } catch (error: any) {
             console.error('Launch error:', error)
