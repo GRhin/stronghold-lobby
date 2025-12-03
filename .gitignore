@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Electron build output
+dist-electron
+
+# Release builds (too large for git - use GitHub Releases instead)
+release/

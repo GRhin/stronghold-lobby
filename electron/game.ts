@@ -99,6 +99,9 @@ export function setupGameHandlers() {
 
         // Use the existing spawn logic
         const argsArray = args.split(' ').filter(arg => arg.length > 0)
+        argsArray.push('--ucp-verbosity 10')
+        argsArray.push('--ucp-no-security')
+        console.log('Launching with arguments:', args, '-> Array:', argsArray)
 
         try {
             const child = spawn(`"${gamePath}"`, argsArray, {

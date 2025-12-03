@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../components/Button'
 // import ReportResultModal from '../components/ReportResultModal'
-import { useSettings } from '../context/SettingsContext'
+
 import { useUser } from '../context/UserContext'
 // import { useLobby } from '../context/LobbyContext'
 // import { socket } from '../socket'
@@ -31,7 +31,7 @@ interface Lobby {
 
 const LobbyRoom: React.FC = () => {
     const navigate = useNavigate()
-    const { gamePath } = useSettings()
+
     const { user } = useUser()
     // const { setCurrentLobby, clearCurrentLobby } = useLobby()
     const { currentLobby, leaveLobby } = useSteam()
@@ -125,13 +125,14 @@ const LobbyRoom: React.FC = () => {
 
     const handleLaunch = async () => {
         // For Steam Lobbies, we rely on the game to handle the connection via Steamworks
-        // Host launches normally (or with specific args if needed)
+        // Host launches with +lobby_host
         // Clients launch with +connect_lobby <id>
 
         try {
             if (!currentLobby) return
 
-            const args = `+connect_lobby ${currentLobby.id}`
+            // Different args for host vs clients
+            const args = isHost ? '+lobby_host' : `+connect_lobby ${currentLobby.id}`
             console.log(isHost ? 'Host launching game via Steam...' : 'Client joining game via Steam...', args, 'Mode:', currentLobby.gameMode)
 
             // Use the new Steam launch method with game mode

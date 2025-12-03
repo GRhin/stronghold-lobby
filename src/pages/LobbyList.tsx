@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import Button from '../components/Button'
 import CreateLobbyModal from '../components/CreateLobbyModal'
-import { useSettings } from '../context/SettingsContext'
 import { useUser } from '../context/UserContext'
 import { useNavigate } from 'react-router-dom'
 // import { socket } from '../socket'
@@ -33,8 +32,7 @@ const LobbyList: React.FC = () => {
     // const [lobbies, setLobbies] = useState<Lobby[]>([])
     const [filter, setFilter] = useState('')
     const [showCreateModal, setShowCreateModal] = useState(false)
-    const { gamePath } = useSettings()
-    const { user, isServerConnected } = useUser()
+    const { isServerConnected } = useUser()
     const { lobbies, refreshLobbies, joinLobby, createLobby } = useSteam()
 
     useEffect(() => {
@@ -70,19 +68,7 @@ const LobbyList: React.FC = () => {
     }, [gamePath, navigate])
     */
 
-    const filteredLobbies = lobbies.filter(lobby => {
-        // Steam lobbies don't have name/map data easily accessible in the list unless we set lobby data
-        // For now, we'll just filter by ID or show all
-        return true
-        /*
-        const hostName = lobby.players.find(p => p.isHost)?.name || 'Unknown'
-        return (
-            lobby.name.toLowerCase().includes(filter.toLowerCase()) ||
-            hostName.toLowerCase().includes(filter.toLowerCase()) ||
-            lobby.map.toLowerCase().includes(filter.toLowerCase())
-        )
-        */
-    })
+    const filteredLobbies = lobbies
 
     const handleJoin = async (lobbyId: string) => {
         try {
@@ -103,7 +89,7 @@ const LobbyList: React.FC = () => {
         setShowCreateModal(true)
     }
 
-    const handleCreateLobby = async (name: string, isRated: boolean, gameMode: 'crusader' | 'extreme') => {
+    const handleCreateLobby = async (name: string, _isRated: boolean, gameMode: 'crusader' | 'extreme') => {
         try {
             await createLobby(8, name, gameMode)
             navigate('/lobby')
