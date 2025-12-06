@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import steamworks from 'steamworks.js'
 
 let client: any = null
@@ -133,28 +133,89 @@ export function setupSteamHandlers() {
         if (!currentLobby) return []
         try {
             const members = currentLobby.getMembers()
-            return members.map((m: any) => {
-                let name = m.steamId64.toString()
-                const steamId = m.steamId64
+            const memberData = []
 
-                // Try to get name
+            for (const m of members) {
+                const steamId = m.steamId64
+                let name = steamId.toString()
+
+                // Get name for local player
                 if (client.localplayer && steamId === client.localplayer.getSteamId().steamId64) {
                     name = client.localplayer.getName()
-                } else if (client.friends) {
-                    try {
-                        const friend = client.friends.getFriend(steamId)
-                        name = friend.getName()
-                    } catch (e) { /* ignore */ }
+                } else {
+                    // Request member data from Steam (this triggers Steam to fetch the data)
+                    currentLobby.requestLobbyMemberData(steamId)
+                    // Use getMemberData to retrieve the username
+                    const personaName = currentLobby.getMemberData(steamId, 'name')
+                    if (personaName) {
+                        name = personaName
+                    }
                 }
 
-                return {
+                memberData.push({
                     id: steamId.toString(),
                     name: name
-                }
-            })
+                })
+            }
+
+            return memberData
         } catch (err) {
             console.error('Failed to get lobby members:', err)
             return []
+        }
+    })
+
+    // --- Lobby Chat Handlers ---
+
+    ipcMain.handle('steam-send-lobby-chat', async (_, message: string) => {
+        if (!currentLobby) throw new Error('Not in a lobby')
+        try {
+            // Send chat message to all lobby members via Steam
+            const success = currentLobby.sendChatMsg(message)
+            if (!success) {
+                console.error('Failed to send lobby chat message')
+            }
+            return success
+        } catch (err) {
+            console.error('Error sending lobby chat:', err)
+            throw err
+        }
+    })
+
+    ipcMain.handle('steam-setup-lobby-chat-listener', async () => {
+        if (!currentLobby || !client) return false
+
+        try {
+            // Listen for lobby chat messages
+            // This uses Steam's callback system
+            client.matchmaking.on('lobby-chat-message', (lobbyId: any, sender: any, message: string) => {
+                if (currentLobby && lobbyId.toString() === currentLobby.id.toString()) {
+                    // Get sender name
+                    let senderName = sender.steamId64.toString()
+                    if (client.localplayer && sender.steamId64 === client.localplayer.getSteamId().steamId64) {
+                        senderName = client.localplayer.getName()
+                    } else {
+                        currentLobby.requestLobbyMemberData(sender.steamId64)
+                        const name = currentLobby.getMemberData(sender.steamId64, 'name')
+                        if (name) senderName = name
+                    }
+
+                    // Send to renderer process
+                    const windows = BrowserWindow.getAllWindows()
+                    if (windows.length > 0) {
+                        windows[0].webContents.send('lobby-chat-message', {
+                            senderId: sender.steamId64.toString(),
+                            senderName: senderName,
+                            message: message,
+                            timestamp: new Date().toISOString()
+                        })
+                    }
+                }
+            })
+            return true
+        } catch (err) {
+            console.error('Error setting up lobby chat listener:', err)
+            return false
         }
     })
 }

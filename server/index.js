@@ -625,6 +625,77 @@ io.on('connection', (socket) => {
         }
     })
 
+    // --- Chat Events ---
+
+    /**
+     * Handle chat messages (Global and Lobby).
+     */
+    socket.on('chat:send', (data) => {
+        if (data.channel === 'global') {
+            io.emit('chat:message', data)
+        } else if (data.channel === 'lobby' && data.steamLobbyId) {
+            // Broadcast to all users who are in this Steam lobby
+            const lobbyMembers = users.filter(u => u.currentSteamLobby === data.steamLobbyId)
+            lobbyMembers.forEach(member => {
+                if (member.socketId) {
+                    io.to(member.socketId).emit('chat:message', data)
+                }
+            })
+        }
+    })
+
+    // --- Steam Lobby Coordination ---
+
+    /**
+     * Track when users join Steam lobbies for game launch coordination.
+     */
+    socket.on('steam:lobby_joined', (lobbyId) => {
+        const user = users.find(u => u.socketId === socket.id)
+        if (user) {
+            user.currentSteamLobby = lobbyId
+            console.log(`${user.name} joined Steam lobby ${lobbyId}`)
+        }
+    })
+
+    /**
+     * Track when users leave Steam lobbies.
+     */
+    socket.on('steam:lobby_left', () => {
+        const user = users.find(u => u.socketId === socket.id)
+        if (user) {
+            console.log(`${user.name} left Steam lobby ${user.currentSteamLobby}`)
+            user.currentSteamLobby = null
+        }
+    })
+
+    /**
+     * Coordinate game launch across all Steam lobby members.
+     * When host launches, all clients in the same lobby receive launch command.
+     */
+    socket.on('steam:game_launch', (data) => {
+        // data: { steamLobbyId }
+        const user = users.find(u => u.socketId === socket.id)
+        if (!user || user.currentSteamLobby !== data.steamLobbyId) {
+            console.log('Unauthorized launch attempt')
+            return
+        }
+
+        console.log(`${user.name} initiating game launch for lobby ${data.steamLobbyId}`)
+
+        // Broadcast launch command to all lobby members
+        const lobbyMembers = users.filter(u => u.currentSteamLobby === data.steamLobbyId)
+        lobbyMembers.forEach(member => {
+            if (member.socketId) {
+                const isHost = member.steamId === user.steamId
+                io.to(member.socketId).emit('steam:game_launching', {
+                    isHost: isHost,
+                    lobbyId: data.steamLobbyId
+                })
+                console.log(`Sent launch command to ${member.name} (isHost: ${isHost})`)
+            }
+        })
+    })
+
     // --- Disconnect Handling ---
 
     /**

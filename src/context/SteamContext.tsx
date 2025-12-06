@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
+import { socket } from '../socket'
 
 interface SteamLobby {
     id: string
@@ -48,6 +49,9 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 gameMode: result.gameMode,
                 members: initialMembers
             })
+
+            // Notify server for game launch coordination
+            socket.emit('steam:lobby_joined', result.id)
         } catch (err) {
             console.error('Failed to create lobby:', err)
             throw err
@@ -67,6 +71,9 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             // Immediately fetch members
             const members = await window.electron.getLobbyMembers()
             setCurrentLobby(prev => prev ? { ...prev, members } : null)
+
+            // Notify server for game launch coordination
+            socket.emit('steam:lobby_joined', result.id)
         } catch (err) {
             console.error('Failed to join lobby:', err)
             throw err
@@ -75,6 +82,11 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const leaveLobby = useCallback(async () => {
         try {
+            // Notify server before leaving
+            if (currentLobby) {
+                socket.emit('steam:lobby_left')
+            }
+
             await window.electron.leaveLobby()
             setCurrentLobby(null)
         } catch (err) {

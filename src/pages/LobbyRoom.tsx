@@ -1,122 +1,49 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../components/Button'
-// import ReportResultModal from '../components/ReportResultModal'
 
 import { useUser } from '../context/UserContext'
-// import { useLobby } from '../context/LobbyContext'
-// import { socket } from '../socket'
 import { useSteam } from '../context/SteamContext'
-
-/*
-interface Player {
-    id: string
-    name: string
-    isHost: boolean
-    rating?: number
-}
-
-interface Lobby {
-    id: string
-    name: string
-    hostId: string
-    hostIp: string
-    map: string
-    maxPlayers: number
-    status: 'Open' | 'In Game'
-    players: Player[]
-    isRated: boolean
-}
-*/
+import { socket } from '../socket'
 
 const LobbyRoom: React.FC = () => {
     const navigate = useNavigate()
 
     const { user } = useUser()
-    // const { setCurrentLobby, clearCurrentLobby } = useLobby()
     const { currentLobby, leaveLobby } = useSteam()
 
-    // const [lobby, setLobby] = useState<Lobby | null>(null)
     const [messages, setMessages] = useState<any[]>([])
     const [chatInput, setChatInput] = useState('')
-    // const [showReportModal, setShowReportModal] = useState(false)
 
     const isHost = currentLobby && user ? currentLobby.owner === user.steamId : false
 
-    /*
-    const lobbyRef = useRef<Lobby | null>(null)
-
     useEffect(() => {
-        lobbyRef.current = lobby
-    }, [lobby])
-
-    useEffect(() => {
-        // Fetch current lobby state in case we missed the join event or refreshed
-        socket.emit('lobby:get-current')
-
-        // Listen for lobby updates
-        socket.on('lobby:update', (updatedLobby: Lobby) => {
-            setLobby(updatedLobby)
-            setIsHost(updatedLobby.hostId === socket.id)
-            setCurrentLobby({ id: updatedLobby.id, name: updatedLobby.name })
-        })
-
-        socket.on('lobby:joined', (joinedLobby: Lobby) => {
-            setLobby(joinedLobby)
-            setIsHost(joinedLobby.hostId === socket.id)
-            setCurrentLobby({ id: joinedLobby.id, name: joinedLobby.name })
-        })
-
+        // Listen for chat messages from server
         socket.on('chat:message', (msg: any) => {
-            setMessages(prev => [...prev, msg])
+            if (msg.channel === 'lobby') {
+                setMessages(prev => [...prev, msg])
+            }
         })
 
-        socket.on('game:launch', async (data: { hostIp: string }) => {
-            console.log('Launching game...', data)
-            if (!gamePath) {
-                alert('Game path not set! Cannot launch.')
-                return
-            }
+        // Listen for game launch command from server
+        socket.on('steam:game_launching', async (data: { isHost: boolean, lobbyId: string }) => {
+            if (!currentLobby || data.lobbyId !== currentLobby.id) return
+
             try {
-                // @ts-ignore
-                await window.electron.launchGame(gamePath, `-connect ${data.hostIp}`)
+                const args = data.isHost ? '+lobby_host' : `+connect_lobby ${currentLobby.id}`
+                console.log(data.isHost ? 'Host launching game...' : 'Auto-launching game as client...', args)
+                await window.electron.launchSteamGame(args, currentLobby.gameMode)
             } catch (err) {
-                console.error('Failed to launch:', err)
+                console.error('Failed to auto-launch game:', err)
                 alert('Failed to launch game')
             }
         })
 
-        // @ts-ignore
-        const cleanupExit = window.electron.onGameExited((code) => {
-            console.log('Game exited with code', code)
-            const currentLobby = lobbyRef.current
-            if (currentLobby && currentLobby.isRated && currentLobby.hostId === socket.id) {
-                setShowReportModal(true)
-            }
-        })
-
-        socket.on('lobby:notification', (msg: string) => {
-            alert(msg)
-        })
-
-        socket.on('error', (err: string) => {
-            if (err === 'Not in a lobby') {
-                // If we are not in a lobby, go back to list
-                navigate('/lobbies')
-            }
-        })
-
         return () => {
-            socket.off('lobby:update')
-            socket.off('lobby:joined')
             socket.off('chat:message')
-            socket.off('game:launch')
-            socket.off('lobby:notification')
-            socket.off('error')
-            cleanupExit()
+            socket.off('steam:game_launching')
         }
-    }, [gamePath, navigate])
-    */
+    }, [currentLobby])
 
     const handleLeave = async () => {
         await leaveLobby()
@@ -124,30 +51,26 @@ const LobbyRoom: React.FC = () => {
     }
 
     const handleLaunch = async () => {
-        // For Steam Lobbies, we rely on the game to handle the connection via Steamworks
-        // Host launches with +lobby_host
-        // Clients launch with +connect_lobby <id>
+        if (!currentLobby || !isHost) return
 
-        try {
-            if (!currentLobby) return
-
-            // Different args for host vs clients
-            const args = isHost ? '+lobby_host' : `+connect_lobby ${currentLobby.id}`
-            console.log(isHost ? 'Host launching game via Steam...' : 'Client joining game via Steam...', args, 'Mode:', currentLobby.gameMode)
-
-            // Use the new Steam launch method with game mode
-            await window.electron.launchSteamGame(args, currentLobby.gameMode)
-        } catch (err) {
-            console.error('Failed to launch game:', err)
-            alert('Failed to launch game')
-        }
+        // Host triggers launch for everyone via server
+        socket.emit('steam:game_launch', {
+            steamLobbyId: currentLobby.id
+        })
     }
 
     const handleSendChat = () => {
-        if (!chatInput.trim()) return
-        // socket.emit('chat:send', { ... })
-        // For now, chat is disabled or local only
-        setMessages(prev => [...prev, { user: user?.name, text: chatInput, timestamp: new Date().toLocaleTimeString() }])
+        if (!chatInput.trim() || !currentLobby || !user) return
+
+        const message = {
+            channel: 'lobby',
+            steamLobbyId: currentLobby.id,
+            user: user.name,
+            text: chatInput,
+            timestamp: new Date().toLocaleTimeString()
+        }
+
+        socket.emit('chat:send', message)
         setChatInput('')
     }
 
@@ -170,11 +93,11 @@ const LobbyRoom: React.FC = () => {
                 </div>
                 <div className="flex gap-3">
                     <Button variant="secondary" onClick={handleLeave}>Leave Lobby</Button>
-                    <div className="flex gap-2">
+                    {isHost && (
                         <Button variant="primary" onClick={handleLaunch}>
-                            {isHost ? 'Launch Game' : 'Launch Game'}
+                            Launch Game
                         </Button>
-                    </div>
+                    )}
                 </div>
             </div>
 
@@ -191,20 +114,13 @@ const LobbyRoom: React.FC = () => {
                                 </div>
                             </div>
                         ))}
-                        {/*
-                        {Array.from({ length: 8 - currentLobby.members.length }).map((_, i) => (
-                            <div key={`empty-${i}`} className="p-3 rounded border border-white/5 border-dashed text-gray-600 text-center text-sm">
-                                Empty Slot
-                            </div>
-                        ))}
-                        */}
                     </div>
                 </div>
 
                 {/* Lobby Chat */}
                 <div className="flex-1 bg-surface rounded-xl border border-white/5 flex flex-col overflow-hidden">
                     <div className="p-4 border-b border-white/10 bg-black/20">
-                        <h2 className="font-bold text-white">Lobby Chat (Local Only)</h2>
+                        <h2 className="font-bold text-white">Lobby Chat</h2>
                     </div>
 
                     <div className="flex-1 p-4 overflow-y-auto space-y-2">
@@ -230,15 +146,6 @@ const LobbyRoom: React.FC = () => {
                     </div>
                 </div>
             </div>
-
-            {/*
-            <ReportResultModal
-                isOpen={showReportModal}
-                onClose={() => setShowReportModal(false)}
-                lobbyId={lobby.id}
-                players={lobby.players}
-            />
-            */}
         </div>
     )
 }
