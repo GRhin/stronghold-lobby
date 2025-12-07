@@ -28,7 +28,6 @@ const LobbyRoom: React.FC = () => {
 
         // Listen for game launch command from server
         socket.on('steam:game_launching', async (data: { isHost: boolean, lobbyId: string }) => {
-            console.log('[LobbyRoom] Received steam:game_launching:', data)
 
             if (!currentLobby || data.lobbyId !== currentLobby.id) {
                 return
@@ -36,7 +35,6 @@ const LobbyRoom: React.FC = () => {
 
             try {
                 const args = data.isHost ? '+lobby_host' : `+connect_lobby ${currentLobby.id}`
-                console.log('[LobbyRoom] Launching game with args:', args, 'mode:', currentLobby.gameMode)
 
                 const result = await window.electron.launchSteamGame(args, currentLobby.gameMode)
                 console.log('[LobbyRoom] Launch result:', result)
@@ -45,7 +43,7 @@ const LobbyRoom: React.FC = () => {
                     alert(`Failed to launch game: ${result.error}`)
                 }
             } catch (err) {
-                console.error('[LobbyRoom] Failed to auto-launch game:', err)
+                console.error('Failed to auto-launch game:', err)
                 alert('Failed to launch game')
             }
         })
