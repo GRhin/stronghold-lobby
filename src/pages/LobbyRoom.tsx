@@ -14,6 +14,7 @@ const LobbyRoom: React.FC = () => {
 
     const [messages, setMessages] = useState<any[]>([])
     const [chatInput, setChatInput] = useState('')
+    const [launchStatus, setLaunchStatus] = useState<string | null>(null)
 
     const isHost = currentLobby && user ? currentLobby.owner === user.steamId : false
 
@@ -27,14 +28,25 @@ const LobbyRoom: React.FC = () => {
 
         // Listen for game launch command from server
         socket.on('steam:game_launching', async (data: { isHost: boolean, lobbyId: string }) => {
-            if (!currentLobby || data.lobbyId !== currentLobby.id) return
+            console.log('[LobbyRoom] Received steam:game_launching:', data)
+
+            if (!currentLobby || data.lobbyId !== currentLobby.id) {
+                console.warn('[LobbyRoom] Ignoring launch - lobby mismatch')
+                return
+            }
 
             try {
                 const args = data.isHost ? '+lobby_host' : `+connect_lobby ${currentLobby.id}`
-                console.log(data.isHost ? 'Host launching game...' : 'Auto-launching game as client...', args)
-                await window.electron.launchSteamGame(args, currentLobby.gameMode)
+                console.log('[LobbyRoom] Launching game with args:', args, 'mode:', currentLobby.gameMode)
+
+                const result = await window.electron.launchSteamGame(args, currentLobby.gameMode)
+                console.log('[LobbyRoom] Launch result:', result)
+
+                if (result && !result.success) {
+                    alert(`Failed to launch game: ${result.error}`)
+                }
             } catch (err) {
-                console.error('Failed to auto-launch game:', err)
+                console.error('[LobbyRoom] Failed to auto-launch game:', err)
                 alert('Failed to launch game')
             }
         })
@@ -53,10 +65,70 @@ const LobbyRoom: React.FC = () => {
     const handleLaunch = async () => {
         if (!currentLobby || !isHost) return
 
+        console.log('[LobbyRoom] Launch button clicked')
+        console.log('[LobbyRoom] Socket connected:', socket.connected)
+        console.log('[LobbyRoom] Current lobby ID:', currentLobby.id)
+
+        setLaunchStatus('Launching game...')
+
+        // If socket is not connected, launch game directly without server coordination
+        if (!socket.connected) {
+            console.warn('[LobbyRoom] Socket not connected, launching game directly')
+            setLaunchStatus('Server offline - launching directly...')
+            try {
+                const args = '+lobby_host'
+                const result = await window.electron.launchSteamGame(args, currentLobby.gameMode)
+                if (result && !result.success) {
+                    setLaunchStatus(`Error: ${result.error}`)
+                    setTimeout(() => setLaunchStatus(null), 5000)
+                    alert(`Failed to launch game: ${result.error}`)
+                } else {
+                    setLaunchStatus('Game launched!')
+                    setTimeout(() => setLaunchStatus(null), 3000)
+                }
+            } catch (err) {
+                console.error('[LobbyRoom] Direct launch failed:', err)
+                setLaunchStatus('Launch failed!')
+                setTimeout(() => setLaunchStatus(null), 5000)
+                alert('Failed to launch game')
+            }
+            return
+        }
+
+        // Set up timeout - if server doesn't respond in 2 seconds, launch directly
+        let launchReceived = false
+        const timeoutId = setTimeout(async () => {
+            if (!launchReceived) {
+                console.warn('[LobbyRoom] Server timeout - launching game directly')
+                setLaunchStatus('Server timeout - launching directly...')
+                try {
+                    const args = '+lobby_host'
+                    const result = await window.electron.launchSteamGame(args, currentLobby.gameMode)
+                    if (result && !result.success) {
+                        setLaunchStatus(`Error: ${result.error}`)
+                        setTimeout(() => setLaunchStatus(null), 5000)
+                    } else {
+                        setLaunchStatus('Game launched!')
+                        setTimeout(() => setLaunchStatus(null), 3000)
+                    }
+                } catch (err) {
+                    console.error('[LobbyRoom] Timeout fallback launch failed:', err)
+                    setLaunchStatus('Launch failed!')
+                    setTimeout(() => setLaunchStatus(null), 5000)
+                }
+            }
+        }, 2000)
+
+            // Store timeout ID so we can clear it when we receive the launch event
+            ; (window as any).__launchTimeoutId = timeoutId
+            ; (window as any).__launchReceived = () => { launchReceived = true }
+
         // Host triggers launch for everyone via server
         socket.emit('steam:game_launch', {
             steamLobbyId: currentLobby.id
         })
+        console.log('[LobbyRoom] Emitted steam:game_launch event')
+        setLaunchStatus('Coordinating launch with server...')
     }
 
     const handleSendChat = () => {
@@ -90,6 +162,11 @@ const LobbyRoom: React.FC = () => {
                 <div>
                     <h1 className="text-3xl font-bold text-white mb-1">{currentLobby.name}</h1>
                     <p className="text-gray-400">Lobby ID: <span className="text-white">{currentLobby.id}</span></p>
+                    {launchStatus && (
+                        <div className="mt-2 px-3 py-1 bg-primary/20 text-primary rounded inline-block text-sm font-bold">
+                            {launchStatus}
+                        </div>
+                    )}
                 </div>
                 <div className="flex gap-3">
                     <Button variant="secondary" onClick={handleLeave}>Leave Lobby</Button>

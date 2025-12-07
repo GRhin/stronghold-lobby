@@ -15,6 +15,9 @@
   "build": {
     "appId": "com.stronghold.lobby",
     "productName": "Stronghold Lobby",
+    "asarUnpack": [
+      "node_modules/steamworks.js/**/*"
+    ],
     "directories": {
       "output": "release"
     },

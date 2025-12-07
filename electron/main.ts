@@ -56,6 +56,8 @@ function createWindow() {
     win.webContents.openDevTools()
   } else {
     win.loadFile(path.join(process.env.DIST || '', 'index.html'))
+    // Enable DevTools in production for debugging
+    win.webContents.openDevTools()
   }
 }
 
