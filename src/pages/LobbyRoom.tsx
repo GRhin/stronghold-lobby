@@ -37,7 +37,7 @@ const LobbyRoom: React.FC = () => {
                 const args = data.isHost ? '+lobby_host' : `+connect_lobby ${currentLobby.id}`
 
                 const result = await window.electron.launchSteamGame(args, currentLobby.gameMode)
-                console.log('[LobbyRoom] Launch result:', result)
+
 
                 if (result && !result.success) {
                     alert(`Failed to launch game: ${result.error}`)
