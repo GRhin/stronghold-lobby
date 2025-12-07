@@ -51,7 +51,6 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             })
 
             // Notify server for game launch coordination
-            console.log('[SteamContext] Emitting steam:lobby_joined with ID:', result.id)
             socket.emit('steam:lobby_joined', result.id)
         } catch (err) {
             console.error('Failed to create lobby:', err)

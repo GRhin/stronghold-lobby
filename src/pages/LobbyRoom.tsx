@@ -31,7 +31,6 @@ const LobbyRoom: React.FC = () => {
             console.log('[LobbyRoom] Received steam:game_launching:', data)
 
             if (!currentLobby || data.lobbyId !== currentLobby.id) {
-                console.warn('[LobbyRoom] Ignoring launch - lobby mismatch')
                 return
             }
 
@@ -65,15 +64,10 @@ const LobbyRoom: React.FC = () => {
     const handleLaunch = async () => {
         if (!currentLobby || !isHost) return
 
-        console.log('[LobbyRoom] Launch button clicked')
-        console.log('[LobbyRoom] Socket connected:', socket.connected)
-        console.log('[LobbyRoom] Current lobby ID:', currentLobby.id)
-
         setLaunchStatus('Launching game...')
 
         // If socket is not connected, launch game directly without server coordination
         if (!socket.connected) {
-            console.warn('[LobbyRoom] Socket not connected, launching game directly')
             setLaunchStatus('Server offline - launching directly...')
             try {
                 const args = '+lobby_host'
@@ -87,7 +81,7 @@ const LobbyRoom: React.FC = () => {
                     setTimeout(() => setLaunchStatus(null), 3000)
                 }
             } catch (err) {
-                console.error('[LobbyRoom] Direct launch failed:', err)
+                console.error('Direct launch failed:', err)
                 setLaunchStatus('Launch failed!')
                 setTimeout(() => setLaunchStatus(null), 5000)
                 alert('Failed to launch game')
@@ -99,7 +93,6 @@ const LobbyRoom: React.FC = () => {
         let launchReceived = false
         const timeoutId = setTimeout(async () => {
             if (!launchReceived) {
-                console.warn('[LobbyRoom] Server timeout - launching game directly')
                 setLaunchStatus('Server timeout - launching directly...')
                 try {
                     const args = '+lobby_host'
@@ -112,7 +105,7 @@ const LobbyRoom: React.FC = () => {
                         setTimeout(() => setLaunchStatus(null), 3000)
                     }
                 } catch (err) {
-                    console.error('[LobbyRoom] Timeout fallback launch failed:', err)
+                    console.error('Timeout fallback launch failed:', err)
                     setLaunchStatus('Launch failed!')
                     setTimeout(() => setLaunchStatus(null), 5000)
                 }
@@ -127,7 +120,6 @@ const LobbyRoom: React.FC = () => {
         socket.emit('steam:game_launch', {
             steamLobbyId: currentLobby.id
         })
-        console.log('[LobbyRoom] Emitted steam:game_launch event')
         setLaunchStatus('Coordinating launch with server...')
     }
 
