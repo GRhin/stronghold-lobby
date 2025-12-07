@@ -651,9 +651,14 @@ io.on('connection', (socket) => {
      */
     socket.on('steam:lobby_joined', (lobbyId) => {
         const user = users.find(u => u.socketId === socket.id)
+        console.log('[steam:lobby_joined] Socket:', socket.id, 'Lobby:', lobbyId)
+        console.log('[steam:lobby_joined] User found:', user ? user.name : 'NOT FOUND')
+
         if (user) {
             user.currentSteamLobby = lobbyId
-            console.log(`${user.name} joined Steam lobby ${lobbyId}`)
+            console.log(`[steam:lobby_joined] ${user.name} joined Steam lobby ${lobbyId}`)
+        } else {
+            console.error('[steam:lobby_joined] User not found for socket:', socket.id)
         }
     })
 
@@ -675,7 +680,14 @@ io.on('connection', (socket) => {
     socket.on('steam:game_launch', (data) => {
         // data: { steamLobbyId }
         const user = users.find(u => u.socketId === socket.id)
+
+        console.log('[steam:game_launch] Received from socket:', socket.id)
+        console.log('[steam:game_launch] User found:', user ? user.name : 'NOT FOUND')
+        console.log('[steam:game_launch] User currentSteamLobby:', user?.currentSteamLobby)
+        console.log('[steam:game_launch] Requested lobbyId:', data.steamLobbyId)
+
         if (!user || user.currentSteamLobby !== data.steamLobbyId) {
+            console.log('[steam:game_launch] UNAUTHORIZED - user:', !!user, 'lobby match:', user?.currentSteamLobby === data.steamLobbyId)
             console.log('Unauthorized launch attempt')
             return
         }
@@ -684,6 +696,8 @@ io.on('connection', (socket) => {
 
         // Broadcast launch command to all lobby members
         const lobbyMembers = users.filter(u => u.currentSteamLobby === data.steamLobbyId)
+        console.log('[steam:game_launch] Lobby members:', lobbyMembers.map(m => m.name))
+
         lobbyMembers.forEach(member => {
             if (member.socketId) {
                 const isHost = member.steamId === user.steamId
