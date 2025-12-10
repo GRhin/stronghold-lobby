@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../components/Button'
+import ReportResultModal from '../components/ReportResultModal'
 
 import { useUser } from '../context/UserContext'
 import { useSteam } from '../context/SteamContext'
@@ -17,9 +18,12 @@ const LobbyRoom: React.FC = () => {
     const [messages, setMessages] = useState<any[]>([])
     const [chatInput, setChatInput] = useState('')
     const [launchStatus, setLaunchStatus] = useState<string | null>(null)
+    const [serverLobby, setServerLobby] = useState<any>(null)
+    const [showResultModal, setShowResultModal] = useState(false)
 
     const isHost = currentLobby && user ? currentLobby.owner === user.steamId : false
     const pendingLobbyIdRef = React.useRef<string | null>(null)
+    const isLeavingRef = React.useRef(false)
 
     // Clear pending ID when currentLobby updates to match it
     useEffect(() => {
@@ -28,17 +32,23 @@ const LobbyRoom: React.FC = () => {
         }
     }, [currentLobby])
 
+    // Clear launch status when lobby changes
+    useEffect(() => {
+        setLaunchStatus(null)
+    }, [currentLobby?.id])
+
+    // 1. Socket Listeners (Chat & Game Launch)
     useEffect(() => {
         // Listen for chat messages from server
-        socket.on('chat:message', (msg: any) => {
+        const handleChatMessage = (msg: any) => {
             if (msg.channel === 'lobby') {
                 setMessages(prev => [...prev, msg])
             }
-        })
+        }
 
         // Listen for game launch command from server
-        // Listen for game launch command from server
-        socket.on('steam:game_launching', async (data: { isHost: boolean, lobbyId: string }) => {
+        const handleGameLaunch = async (data: { isHost: boolean, lobbyId: string }) => {
+            if (isLeavingRef.current) return
 
             if (!currentLobby || data.lobbyId !== currentLobby.id) {
                 return
@@ -88,47 +98,26 @@ const LobbyRoom: React.FC = () => {
                 setLaunchStatus('Launch failed')
                 alert('Failed to launch game')
             }
-        })
+        }
+
+        socket.on('chat:message', handleChatMessage)
+        socket.on('steam:game_launching', handleGameLaunch)
 
         return () => {
-            socket.off('chat:message')
-            socket.off('steam:game_launching')
+            socket.off('chat:message', handleChatMessage)
+            socket.off('steam:game_launching', handleGameLaunch)
         }
-    }, [currentLobby])
+    }, [currentLobby, crusaderPath, extremePath])
 
-    // --- Persistent Lobby Logic ---
-
-    // 1. Listen for Server Lobby updates (e.g., Steam ID changes) in currentLobby context?
-    // Actually, LobbyRoom relies on 'currentLobby' from SteamContext which is purely local/steam state.
-    // We need to listen to socket events for the *Server* lobby state to sync.
-    // Wait, LobbyRoom is currently built purely around SteamContext.currentLobby.
-    // To support persistence, we need to bridge the two.
-
-    // Let's assume we are in a Server Lobby if `socket` has one.
-    // Clear launch status when lobby changes
-    useEffect(() => {
-        setLaunchStatus(null)
-    }, [currentLobby?.id])
-
-    // 1. Listen for Server Lobby updates (e.g., Steam ID changes) in currentLobby context?
-    // Actually, LobbyRoom relies on 'currentLobby' from SteamContext which is purely local/steam state.
-    // We need to listen to socket events for the *Server* lobby state to sync.
-    // Wait, LobbyRoom is currently built purely around SteamContext.currentLobby.
-    // To support persistence, we need to bridge the two.
-
-    // Let's assume we are in a Server Lobby if `socket` has one.
-    // We need a way to know WHICH server lobby we are in.
-    // The `LobbyProvider` (not used in this file yet) should track this.
-
-    // For now, let's implement a listener for 'lobby:update' if we can determine we are in that lobby.
+    // 2. Persistent Lobby Logic (Auto-Join updated lobbies)
     useEffect(() => {
         const handleLobbyUpdate = async (updatedLobby: any) => {
+            if (isLeavingRef.current) return
+
             // Check if this update is for us
-            // ideally we check if updatedLobby.steamLobbyId != currentSteamLobby.id
             if (!currentLobby) return
 
             // If WE are the host of the server lobby, we ignore updates because we act as the source of truth.
-            // This prevents the host from trying to "join" a new lobby ID that it just created itself.
             if (updatedLobby.hostId === socket.id) return
 
             // If this update matches our pending lobby ID, we are already transitioning, so ignore.
@@ -149,20 +138,27 @@ const LobbyRoom: React.FC = () => {
         return () => {
             socket.off('lobby:update', handleLobbyUpdate)
         }
-    }, [currentLobby])
+    }, [currentLobby, joinLobby])
 
-    // Listen for game exit to reset status
+    // 3. Game Exit Listener (Auto-Open / Result Reporting)
     useEffect(() => {
         const handleGameExit = async (code: number) => {
+            if (isLeavingRef.current) return
+
             console.log('Game exited with code:', code)
             setLaunchStatus(null)
 
             if (isHost && currentLobby) {
-                // Reset lobby status to Open so it shows as joinable in browser
-                try {
-                    await window.electron.setLobbyData('status', 'Open')
-                } catch (err) {
-                    console.error('Failed to reset lobby status:', err)
+                // If rated game, show reporting modal
+                if (serverLobby?.isRated) {
+                    setShowResultModal(true)
+                } else {
+                    // Reset lobby status to Open so it shows as joinable in browser
+                    try {
+                        await window.electron.setLobbyData('status', 'Open')
+                    } catch (err) {
+                        console.error('Failed to reset lobby status:', err)
+                    }
                 }
             }
         }
@@ -171,11 +167,9 @@ const LobbyRoom: React.FC = () => {
         return () => {
             window.electron.removeGameExitedListener(handleGameExit)
         }
-    }, [isHost, currentLobby])
+    }, [isHost, currentLobby, serverLobby])
 
-    // 2. Host Reform Logic
-    // If we are Host, and we detect we aren't in a Steam lobby (but should be), recreate it.
-
+    // 4. Host Reform Logic (Auto-Recreate Dead Lobbies)
     useEffect(() => {
         let isServerHost = false
 
@@ -194,6 +188,11 @@ const LobbyRoom: React.FC = () => {
         }
 
         const checkHost = (lobby: any) => {
+            if (isLeavingRef.current) return
+
+            if (lobby) {
+                setServerLobby(lobby)
+            }
             if (lobby && user && lobby.hostId === socket.id) {
                 isServerHost = true
 
@@ -242,9 +241,10 @@ const LobbyRoom: React.FC = () => {
             socket.off('lobby:update', checkHost)
             socket.off('lobby:joined', checkHost)
         }
-    }, [currentLobby, user])
+    }, [currentLobby, user, createLobby])
 
     const handleLeave = async () => {
+        isLeavingRef.current = true
         await leaveLobby()
         navigate('/lobbies')
     }
@@ -353,11 +353,11 @@ const LobbyRoom: React.FC = () => {
                 </div>
                 <div className="flex gap-3">
                     <Button variant="secondary" onClick={handleLeave}>Leave Lobby</Button>
-                    {isHost && (
+                    {isHost && ((
                         <Button variant="primary" onClick={handleLaunch}>
                             Launch Game
                         </Button>
-                    )}
+                    ))}
                 </div>
             </div>
 
@@ -406,6 +406,13 @@ const LobbyRoom: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            <ReportResultModal
+                isOpen={showResultModal}
+                onClose={() => setShowResultModal(false)}
+                lobbyId={serverLobby?.id}
+                players={serverLobby?.players || []}
+            />
         </div>
     )
 }

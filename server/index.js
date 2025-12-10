@@ -636,33 +636,29 @@ io.on('connection', (socket) => {
     /**
      * Handle chat messages (Global and Lobby).
      */
-    socket.on('chat:send', (data) => {
-        if (data.channel === 'global') {
-            io.emit('chat:message', data)
-        } else if (data.channel === 'lobby') {
-            const lobby = findLobbyBySocketId(socket.id)
-            if (lobby) {
-                io.to(lobby.id).emit('chat:message', data)
-            }
-        }
-    })
-
-    // --- Chat Events ---
-
     /**
      * Handle chat messages (Global and Lobby).
      */
     socket.on('chat:send', (data) => {
         if (data.channel === 'global') {
             io.emit('chat:message', data)
-        } else if (data.channel === 'lobby' && data.steamLobbyId) {
-            // Broadcast to all users who are in this Steam lobby
-            const lobbyMembers = users.filter(u => u.currentSteamLobby === data.steamLobbyId)
-            lobbyMembers.forEach(member => {
-                if (member.socketId) {
-                    io.to(member.socketId).emit('chat:message', data)
+        } else if (data.channel === 'lobby') {
+            // 1. Try sending to Steam Lobby members if ID is provided
+            if (data.steamLobbyId) {
+                const lobbyMembers = users.filter(u => u.currentSteamLobby === data.steamLobbyId)
+                lobbyMembers.forEach(member => {
+                    if (member.socketId) {
+                        io.to(member.socketId).emit('chat:message', data)
+                    }
+                })
+            }
+            // 2. Fallback: Send to internal server lobby
+            else {
+                const lobby = findLobbyBySocketId(socket.id)
+                if (lobby) {
+                    io.to(lobby.id).emit('chat:message', data)
                 }
-            })
+            }
         }
     })
 

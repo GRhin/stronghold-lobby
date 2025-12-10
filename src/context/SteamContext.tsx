@@ -11,7 +11,7 @@ interface SteamLobby {
 
 interface SteamContextType {
     currentLobby: SteamLobby | null
-    createLobby: (maxMembers?: number, lobbyName?: string, gameMode?: 'crusader' | 'extreme', skipServerCreate?: boolean) => Promise<string>
+    createLobby: (maxMembers?: number, lobbyName?: string, gameMode?: 'crusader' | 'extreme', isRated?: boolean, skipServerCreate?: boolean) => Promise<string>
     joinLobby: (lobbyId: string) => Promise<string>
     leaveLobby: () => Promise<void>
     refreshLobbyMembers: () => Promise<void>
@@ -35,7 +35,7 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
     }, [currentLobby?.id]) // Depend on ID to avoid stale closure issues if object changes
 
-    const createLobby = useCallback(async (maxMembers: number = 8, lobbyName: string = 'Lobby', gameMode: 'crusader' | 'extreme' = 'crusader', skipServerCreate: boolean = false) => {
+    const createLobby = useCallback(async (maxMembers: number = 8, lobbyName: string = 'Lobby', gameMode: 'crusader' | 'extreme' = 'crusader', isRated: boolean = false, skipServerCreate: boolean = false) => {
         try {
             const result = await window.electron.createLobby(maxMembers, lobbyName, gameMode)
             // Initialize with owner (self)
@@ -55,7 +55,7 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 socket.emit('lobby:create', {
                     name: lobbyName,
                     maxPlayers: maxMembers,
-                    isRated: false, // Default for now
+                    isRated: isRated,
                     hostName: user?.name,
                     map: 'Unknown'
                 })
@@ -106,6 +106,7 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             // Notify server before leaving
             if (currentLobby) {
                 socket.emit('steam:lobby_left')
+                socket.emit('lobby:leave') // Trigger server-side leave/migration
             }
 
             await window.electron.leaveLobby()

@@ -91,7 +91,7 @@ const LobbyList: React.FC = () => {
 
     const handleCreateLobby = async (name: string, _isRated: boolean, gameMode: 'crusader' | 'extreme') => {
         try {
-            await createLobby(8, name, gameMode)
+            await createLobby(8, name, gameMode, _isRated)
             navigate('/lobby')
         } catch (err) {
             console.error(err)

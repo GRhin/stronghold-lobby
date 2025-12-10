@@ -4,24 +4,9 @@ import { useLocation } from 'react-router-dom';
 
 import { socket } from '../socket';
 import { useUser } from '../context/UserContext';
+import { useChat, type Message } from '../context/ChatContext';
 
-/**
- * Message interface represents a chat message.
- * It supports three channel types:
- *   - 'global' : messages visible to everyone
- *   - 'lobby'  : messages visible to users in the same lobby
- *   - 'whisper': direct messages between two friends
- */
-interface Message {
-    id: string;               // Unique identifier for the message
-    user?: string;            // Display name of the sender (for global/lobby messages)
-    from?: string;            // SteamID of the sender (for direct messages)
-    to?: string;              // SteamID of the recipient (for direct messages)
-    fromName?: string;        // Display name of the sender (for direct messages)
-    text: string;             // Message content
-    timestamp: string;        // Human‑readable timestamp (e.g. "14:32")
-    channel: 'global' | 'lobby' | 'whisper'; // Channel type
-}
+// Message interface is now imported from ChatContext
 
 /**
  * Friend interface represents a user in the friends list.
@@ -44,6 +29,7 @@ interface Friend {
 const Chat: React.FC = () => {
     // ----- Global hooks -----------------------------------------------------
     const { user } = useUser();                     // Current logged‑in user
+    const { globalMessages } = useChat();           // Persistent global messages
     const location = useLocation();                 // Router location (used for DM navigation)
 
     // ----- State -----------------------------------------------------------
@@ -69,13 +55,15 @@ const Chat: React.FC = () => {
         socket.emit('friends:list');
 
         // 3️⃣ Register socket listeners.
-        // Global / lobby chat messages.
-        socket.on('chat:message', (msg: Message) => {
-            setMessages(prev => [...prev, msg]);
-        });
+        // Lobby chat messages (Global is now handled by ChatContext)
+        const handleChatMessage = (msg: Message) => {
+            if (msg.channel === 'lobby') {
+                setMessages(prev => [...prev, msg]);
+            }
+        }
 
         // Direct message received.
-        socket.on('message:received', (msg: Message) => {
+        const handleMessageReceived = (msg: Message) => {
             // Normalise the message for UI consumption.
             const displayMsg: Message = {
                 id: msg.id ?? Date.now().toString(),
@@ -88,10 +76,10 @@ const Chat: React.FC = () => {
                 channel: 'whisper',
             };
             setMessages(prev => [...prev, displayMsg]);
-        });
+        }
 
         // History of a DM conversation.
-        socket.on('message:history', (data: { friendSteamId: string; messages: any[] }) => {
+        const handleMessageHistory = (data: { friendSteamId: string; messages: any[] }) => {
             const history = data.messages.map(msg => ({
                 id: msg.id,
                 user: msg.from === user?.steamId ? user?.name : msg.fromName,
@@ -103,19 +91,24 @@ const Chat: React.FC = () => {
                 channel: 'whisper' as const,
             }));
             setMessages(prev => [...prev, ...history]);
-        });
+        }
 
         // Friends list updates.
-        socket.on('friends:list', (data: { friends: Friend[] }) => {
+        const handleFriendsList = (data: { friends: Friend[] }) => {
             setFriends(data.friends);
-        });
+        }
+
+        socket.on('chat:message', handleChatMessage);
+        socket.on('message:received', handleMessageReceived);
+        socket.on('message:history', handleMessageHistory);
+        socket.on('friends:list', handleFriendsList);
 
         // Cleanup listeners on component unmount.
         return () => {
-            socket.off('chat:message');
-            socket.off('message:received');
-            socket.off('message:history');
-            socket.off('friends:list');
+            socket.off('chat:message', handleChatMessage);
+            socket.off('message:received', handleMessageReceived);
+            socket.off('message:history', handleMessageHistory);
+            socket.off('friends:list', handleFriendsList);
         };
     }, [location, user]); // Re‑run only if the navigation state or user changes.
 
@@ -164,7 +157,9 @@ const Chat: React.FC = () => {
             ((m.from === activeFriend.steamId && m.to === user?.steamId) ||
                 (m.from === user?.steamId && m.to === activeFriend.steamId))
         )
-        : messages.filter(m => m.channel === activeChannel);
+        : activeChannel === 'global'
+            ? globalMessages
+            : messages.filter(m => m.channel === 'lobby');
 
     // ----- Render ----------------------------------------------------------
     return (

@@ -10,6 +10,7 @@ import { SettingsProvider } from './context/SettingsContext'
 import { UserProvider } from './context/UserContext'
 import { LobbyProvider } from './context/LobbyContext'
 import { SteamProvider } from './context/SteamContext'
+import { ChatProvider } from './context/ChatContext'
 import ConnectionOverlay from './components/ConnectionOverlay'
 
 function App() {
@@ -18,21 +19,23 @@ function App() {
       <UserProvider>
         <LobbyProvider>
           <SteamProvider>
-            <HashRouter>
-              <ConnectionOverlay />
-              <div className="min-h-screen bg-background text-white font-sans">
-                <Routes>
-                  <Route path="/" element={<Auth />} />
-                  <Route element={<Layout />}>
-                    <Route path="/lobbies" element={<LobbyList />} />
-                    <Route path="/lobby" element={<LobbyRoom />} />
-                    <Route path="/chat" element={<Chat />} />
-                    <Route path="/friends" element={<Friends />} />
-                    <Route path="/settings" element={<Settings />} />
-                  </Route>
-                </Routes>
-              </div>
-            </HashRouter>
+            <ChatProvider>
+              <HashRouter>
+                <ConnectionOverlay />
+                <div className="min-h-screen bg-background text-white font-sans">
+                  <Routes>
+                    <Route path="/" element={<Auth />} />
+                    <Route element={<Layout />}>
+                      <Route path="/lobbies" element={<LobbyList />} />
+                      <Route path="/lobby" element={<LobbyRoom />} />
+                      <Route path="/chat" element={<Chat />} />
+                      <Route path="/friends" element={<Friends />} />
+                      <Route path="/settings" element={<Settings />} />
+                    </Route>
+                  </Routes>
+                </div>
+              </HashRouter>
+            </ChatProvider>
           </SteamProvider>
         </LobbyProvider>
       </UserProvider>
