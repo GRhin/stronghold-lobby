@@ -3,17 +3,23 @@ import Button from '../components/Button'
 import { useSettings } from '../context/SettingsContext'
 
 const Settings: React.FC = () => {
-    const { gamePath, setGamePath } = useSettings()
+    const { crusaderPath, setCrusaderPath, extremePath, setExtremePath } = useSettings()
     const [launchArgs, setLaunchArgs] = useState('-nointro')
 
-    const handleBrowse = async () => {
+    const handleBrowseCrusader = async () => {
         // @ts-ignore
         const path = await window.electron.selectGamePath()
-        if (path) setGamePath(path)
+        if (path) setCrusaderPath(path)
+    }
+
+    const handleBrowseExtreme = async () => {
+        // @ts-ignore
+        const path = await window.electron.selectGamePath()
+        if (path) setExtremePath(path)
     }
 
     const handleSave = () => {
-        console.log('Saving settings:', { gamePath, launchArgs })
+        console.log('Saving settings:', { crusaderPath, extremePath, launchArgs })
         // In a real app we might save args too, but for now just path is global
         alert('Settings saved!')
     }
@@ -28,19 +34,36 @@ const Settings: React.FC = () => {
             <div className="bg-surface p-6 rounded-xl border border-white/5 space-y-6">
                 <h2 className="text-xl font-bold text-primary border-b border-white/10 pb-2">Game Configuration</h2>
 
-                <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-300">Stronghold Crusader Path</label>
-                    <div className="flex gap-2">
-                        <input
-                            type="text"
-                            value={gamePath}
-                            onChange={(e) => setGamePath(e.target.value)}
-                            placeholder="C:\Program Files (x86)\Steam\steamapps\common\Stronghold Crusader Extreme\Stronghold Crusader.exe"
-                            className="flex-1 bg-black/30 border border-white/10 rounded px-4 py-2 text-white focus:outline-none focus:border-primary"
-                        />
-                        <Button variant="secondary" onClick={handleBrowse}>Browse</Button>
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-300">Stronghold Crusader Path</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={crusaderPath}
+                                onChange={(e) => setCrusaderPath(e.target.value)}
+                                placeholder="C:\...\Stronghold Crusader.exe"
+                                className="flex-1 bg-black/30 border border-white/10 rounded px-4 py-2 text-white focus:outline-none focus:border-primary"
+                            />
+                            <Button variant="secondary" onClick={handleBrowseCrusader}>Browse</Button>
+                        </div>
+                        <p className="text-xs text-gray-500">Select the main executable (Stronghold Crusader.exe)</p>
                     </div>
-                    <p className="text-xs text-gray-500">Select the main executable (Stronghold Crusader.exe)</p>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-300">Stronghold Crusader Extreme Path</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={extremePath}
+                                onChange={(e) => setExtremePath(e.target.value)}
+                                placeholder="C:\...\Stronghold_Crusader_Extreme.exe"
+                                className="flex-1 bg-black/30 border border-white/10 rounded px-4 py-2 text-white focus:outline-none focus:border-primary"
+                            />
+                            <Button variant="secondary" onClick={handleBrowseExtreme}>Browse</Button>
+                        </div>
+                        <p className="text-xs text-gray-500">Select the Extreme executable (Stronghold_Crusader_Extreme.exe)</p>
+                    </div>
                 </div>
 
                 <div className="space-y-2">

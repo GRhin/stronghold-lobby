@@ -4,6 +4,7 @@ import Button from '../components/Button'
 
 import { useUser } from '../context/UserContext'
 import { useSteam } from '../context/SteamContext'
+import { useSettings } from '../context/SettingsContext'
 import { socket } from '../socket'
 
 const LobbyRoom: React.FC = () => {
@@ -11,6 +12,7 @@ const LobbyRoom: React.FC = () => {
 
     const { user } = useUser()
     const { currentLobby, leaveLobby } = useSteam()
+    const { crusaderPath, extremePath } = useSettings()
 
     const [messages, setMessages] = useState<any[]>([])
     const [chatInput, setChatInput] = useState('')
@@ -27,23 +29,55 @@ const LobbyRoom: React.FC = () => {
         })
 
         // Listen for game launch command from server
+        // Listen for game launch command from server
         socket.on('steam:game_launching', async (data: { isHost: boolean, lobbyId: string }) => {
 
             if (!currentLobby || data.lobbyId !== currentLobby.id) {
                 return
             }
 
+            // Cancel any pending fallback launch
+            if ((window as any).__launchTimeoutId) {
+                clearTimeout((window as any).__launchTimeoutId)
+                    ; (window as any).__launchTimeoutId = null
+            }
+            if ((window as any).__launchReceived) {
+                ; (window as any).__launchReceived()
+                    ; (window as any).__launchReceived = null
+            }
+
             try {
-                const args = data.isHost ? '+lobby_host' : `+connect_lobby ${currentLobby.id}`
+                // Host gets both arguments, joiner only gets connect_lobby
+                const args = data.isHost
+                    ? `+host_lobby +connect_lobby ${currentLobby.id}`
+                    : `+connect_lobby ${currentLobby.id}`
 
-                const result = await window.electron.launchSteamGame(args, currentLobby.gameMode)
-
-
-                if (result && !result.success) {
-                    alert(`Failed to launch game: ${result.error}`)
+                const launchGame = async () => {
+                    setLaunchStatus('Launching game...')
+                    const path = currentLobby.gameMode === 'extreme' ? extremePath : crusaderPath
+                    const result = await window.electron.launchSteamGame(args, currentLobby.gameMode, path)
+                    if (result && !result.success) {
+                        setLaunchStatus(`Failed: ${result.error}`)
+                        alert(`Failed to launch game: ${result.error}`)
+                    } else {
+                        setLaunchStatus('Game launched!')
+                    }
                 }
+
+                if (data.isHost) {
+                    // Host launches immediately
+                    await launchGame()
+                } else {
+                    // Joiners wait 5 seconds to ensure host has initialized the lobby
+                    setLaunchStatus('Host starting game... Launching in 5s...')
+                    setTimeout(async () => {
+                        await launchGame()
+                    }, 5000)
+                }
+
             } catch (err) {
                 console.error('Failed to auto-launch game:', err)
+                setLaunchStatus('Launch failed')
                 alert('Failed to launch game')
             }
         })
@@ -68,8 +102,9 @@ const LobbyRoom: React.FC = () => {
         if (!socket.connected) {
             setLaunchStatus('Server offline - launching directly...')
             try {
-                const args = '+lobby_host'
-                const result = await window.electron.launchSteamGame(args, currentLobby.gameMode)
+                const args = `+host_lobby +connect_lobby ${currentLobby.id}`
+                const path = currentLobby.gameMode === 'extreme' ? extremePath : crusaderPath
+                const result = await window.electron.launchSteamGame(args, currentLobby.gameMode, path)
                 if (result && !result.success) {
                     setLaunchStatus(`Error: ${result.error}`)
                     setTimeout(() => setLaunchStatus(null), 5000)
@@ -93,8 +128,10 @@ const LobbyRoom: React.FC = () => {
             if (!launchReceived) {
                 setLaunchStatus('Server timeout - launching directly...')
                 try {
-                    const args = '+lobby_host'
-                    const result = await window.electron.launchSteamGame(args, currentLobby.gameMode)
+                    // Updated args for host
+                    const args = `+host_lobby +connect_lobby ${currentLobby.id}`
+                    const path = currentLobby.gameMode === 'extreme' ? extremePath : crusaderPath
+                    const result = await window.electron.launchSteamGame(args, currentLobby.gameMode, path)
                     if (result && !result.success) {
                         setLaunchStatus(`Error: ${result.error}`)
                         setTimeout(() => setLaunchStatus(null), 5000)

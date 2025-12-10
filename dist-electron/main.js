@@ -1,1 +1,392 @@
-"use strict";const a=require("electron"),d=require("path"),b=require("child_process"),g=require("fs"),S=require("steamworks.js"),I=require("stream/promises"),M=require("stream");let r=null,s=null;function v(){try{r=S.init(40970),console.log("Steam initialized:",r.localplayer.getName()),console.log("Client keys:",Object.keys(r)),console.log("Localplayer keys:",Object.keys(r.localplayer))}catch(t){console.error("Failed to initialize Steam:",t)}}function D(){a.ipcMain.handle("get-steam-user",()=>r?{name:r.localplayer.getName(),steamId:r.localplayer.getSteamId().steamId64.toString()}:null),a.ipcMain.handle("get-auth-ticket",async()=>{if(!r)throw new Error("Steam not initialized");try{return(await r.auth.getAuthTicketForWebApi("LobbyClient")).getBytes().toString("hex")}catch(t){return console.error("Failed to get auth ticket:",t),null}}),a.ipcMain.handle("get-steam-friends",()=>r?r.friends?r.friends.getFriends(4).map(e=>({id:e.getSteamId().steamId64.toString(),name:e.getName(),status:e.getPersonaState(),avatar:e.getMediumAvatarUrl()})):(console.warn("Steam Friends interface not available in this version of steamworks.js"),[{id:"76561198000000001",name:"Sir William (Mock)",status:1,avatar:"https://api.dicebear.com/7.x/avataaars/svg?seed=William"},{id:"76561198000000002",name:"The Snake (Mock)",status:6,avatar:"https://api.dicebear.com/7.x/avataaars/svg?seed=Snake"},{id:"76561198000000003",name:"The Rat (Mock)",status:0,avatar:"https://api.dicebear.com/7.x/avataaars/svg?seed=Rat"}]):[]),a.ipcMain.handle("steam-create-lobby",async(t,e=8,i="Lobby",l="crusader")=>{if(!r)throw new Error("Steam not initialized");try{return s=await r.matchmaking.createLobby(2,e),console.log("Created lobby:",s.id),s.setData("name",i)||console.warn("Failed to set lobby name"),s.setData("gameMode",l)||console.warn("Failed to set game mode"),{id:s.id.toString(),owner:s.getOwner().steamId64.toString(),name:i,gameMode:l}}catch(n){throw console.error("Failed to create lobby:",n),n}}),a.ipcMain.handle("steam-get-lobbies",async()=>{if(!r)return[];try{return(await r.matchmaking.getLobbies()).map(e=>({id:e.id.toString(),memberCount:e.getMemberCount(),maxMembers:e.getMemberLimit(),name:e.getData("name")||"Unnamed Lobby",gameMode:e.getData("gameMode")||"crusader"}))}catch(t){return console.error("Failed to get lobbies:",t),[]}}),a.ipcMain.handle("steam-join-lobby",async(t,e)=>{if(!r)throw new Error("Steam not initialized");try{return console.log("Joining lobby:",e),s=await r.matchmaking.joinLobby(BigInt(e)),{id:s.id.toString(),owner:s.getOwner().steamId64.toString()}}catch(i){throw console.error("Failed to join lobby:",i),i}}),a.ipcMain.handle("steam-leave-lobby",async()=>{s&&(console.log("Leaving lobby:",s.id),await s.leave(),s=null)}),a.ipcMain.handle("steam-get-lobby-members",async()=>{if(!s)return[];try{const t=s.getMembers(),e=[];for(const i of t){const l=i.steamId64;let n=l.toString();if(r.localplayer&&l===r.localplayer.getSteamId().steamId64)n=r.localplayer.getName();else{s.requestLobbyMemberData(l);const o=s.getMemberData(l,"name");o&&(n=o)}e.push({id:l.toString(),name:n})}return e}catch(t){return console.error("Failed to get lobby members:",t),[]}}),a.ipcMain.handle("steam-send-lobby-chat",async(t,e)=>{if(!s)throw new Error("Not in a lobby");try{const i=s.sendChatMsg(e);return i||console.error("Failed to send lobby chat message"),i}catch(i){throw console.error("Error sending lobby chat:",i),i}}),a.ipcMain.handle("steam-setup-lobby-chat-listener",async()=>{if(!s||!r)return!1;try{return r.matchmaking.on("lobby-chat-message",(t,e,i)=>{if(s&&t.toString()===s.id.toString()){let l=e.steamId64.toString();if(r.localplayer&&e.steamId64===r.localplayer.getSteamId().steamId64)l=r.localplayer.getName();else{s.requestLobbyMemberData(e.steamId64);const o=s.getMemberData(e.steamId64,"name");o&&(l=o)}const n=a.BrowserWindow.getAllWindows();n.length>0&&n[0].webContents.send("lobby-chat-message",{senderId:e.steamId64.toString(),senderName:l,message:i,timestamp:new Date().toISOString()})}}),!0}catch(t){return console.error("Error setting up lobby chat listener:",t),!1}})}function k(){if(!r)return console.error("getGameInstallDir: Client is null"),null;try{console.log("getGameInstallDir: Attempting to get install dir for 40970");const t=r.apps.appInstallDir(40970);return console.log("getGameInstallDir: Result:",t),t}catch(t){return console.error("getGameInstallDir: Failed to get install dir:",t),null}}let h=null;function x(t){h=t}function E(){a.ipcMain.handle("select-game-path",async()=>{const t=await a.dialog.showOpenDialog({properties:["openFile"],filters:[{name:"Executables",extensions:["exe"]}]});return!t.canceled&&t.filePaths.length>0?t.filePaths[0]:null}),a.ipcMain.handle("launch-game",async(t,e,i)=>{if(!g.existsSync(e))throw new Error("Game executable not found");const l=i.split(" ").filter(o=>o.length>0),n=d.dirname(e);console.log(`Launching game: "${e}" with args: ${l} in ${n}`);try{const o=b.spawn(`"${e}"`,l,{cwd:n,detached:!0,shell:!0,windowsVerbatimArguments:!0});return o.on("error",c=>{console.error("Failed to start game:",c)}),o.on("close",c=>{console.log(`Game process closed with code ${c}`),h&&h.webContents.send("game-exited",c)}),o.unref(),{success:!0}}catch(o){return console.error("Launch error:",o),{success:!1,error:o.message}}}),a.ipcMain.handle("launch-steam-game",async(t,e,i="crusader")=>{console.log("Attempting to auto-detect game path...");const l=k();if(!l){console.error("Could not detect game install directory");const p=`steam://run/40970//${encodeURIComponent(e).replace(/%2B/g,"+")}`;console.log("Fallback to Steam URL:",p);try{return await a.shell.openExternal(p),{success:!0}}catch(f){return{success:!1,error:f.message}}}const n=i==="extreme"?"Stronghold_Crusader_Extreme.exe":"Stronghold Crusader.exe",o=d.join(l,n);if(console.log("Auto-detected game path:",o,"(Mode:",i,")"),!g.existsSync(o))return console.error("Executable not found at:",o),{success:!1,error:`Executable not found: ${n}`};const c=e.split(" ").filter(m=>m.length>0);c.push("--ucp-verbosity 10"),c.push("--ucp-no-security"),console.log("Launching with arguments:",e,"-> Array:",c);try{return b.spawn(`"${o}"`,c,{cwd:l,detached:!0,shell:!0,windowsVerbatimArguments:!0}).unref(),{success:!0}}catch(m){return console.error("Launch error:",m),{success:!1,error:m.message}}})}function C(){a.ipcMain.handle("download-file",async(t,e,i,l)=>{try{console.log(`Starting download: ${e} -> ${i}`);let n="";l==="maps"?n=d.join(a.app.getPath("documents"),"Stronghold Crusader","Maps"):l==="ucp"?n=d.join(a.app.getPath("userData"),"UCP"):n=d.join(a.app.getPath("downloads")),g.existsSync(n)||g.mkdirSync(n,{recursive:!0});const o=d.join(n,i),c=await fetch(e);if(!c.ok)throw new Error(`Failed to fetch ${e}: ${c.statusText}`);if(!c.body)throw new Error("No response body");const m=M.Readable.fromWeb(c.body);return await I.pipeline(m,g.createWriteStream(o)),console.log(`Download complete: ${o}`),{success:!0,path:o}}catch(n){return console.error("Download error:",n),{success:!1,error:n.message}}})}E();C();v();D();process.env.DIST=d.join(__dirname,"../dist");process.env.VITE_PUBLIC=a.app.isPackaged?process.env.DIST:d.join(process.env.DIST,"../public");let u;const w=process.env.VITE_DEV_SERVER_URL;function y(){const t=process.env.VITE_PUBLIC||"";u=new a.BrowserWindow({width:1200,height:800,icon:d.join(t,"electron-vite.svg"),webPreferences:{preload:d.join(__dirname,"preload.js"),nodeIntegration:!0,contextIsolation:!0},backgroundColor:"#1a1a1a",titleBarStyle:"hidden",titleBarOverlay:{color:"#1a1a1a",symbolColor:"#ffffff",height:30}}),x(u),u.webContents.on("did-finish-load",()=>{u?.webContents.send("main-process-message",new Date().toLocaleString())}),w?(u.loadURL(w),u.webContents.openDevTools()):(u.loadFile(d.join(process.env.DIST||"","index.html")),u.webContents.openDevTools())}a.app.on("window-all-closed",()=>{process.platform!=="darwin"&&a.app.quit()});a.app.on("activate",()=>{a.BrowserWindow.getAllWindows().length===0&&y()});a.app.whenReady().then(y);
+"use strict";
+const electron = require("electron");
+const path = require("path");
+const child_process = require("child_process");
+const fs = require("fs");
+const steamworks = require("steamworks.js");
+const promises = require("stream/promises");
+const stream = require("stream");
+let client = null;
+let currentLobby = null;
+function initSteam() {
+  try {
+    client = steamworks.init(40970);
+    console.log("Steam initialized:", client.localplayer.getName());
+    console.log("Client keys:", Object.keys(client));
+    console.log("Localplayer keys:", Object.keys(client.localplayer));
+  } catch (err) {
+    console.error("Failed to initialize Steam:", err);
+  }
+}
+function setupSteamHandlers() {
+  electron.ipcMain.handle("get-steam-user", () => {
+    if (!client) return null;
+    return {
+      name: client.localplayer.getName(),
+      steamId: client.localplayer.getSteamId().steamId64.toString()
+    };
+  });
+  electron.ipcMain.handle("get-auth-ticket", async () => {
+    if (!client) throw new Error("Steam not initialized");
+    try {
+      const ticket = await client.auth.getAuthTicketForWebApi("LobbyClient");
+      return ticket.getBytes().toString("hex");
+    } catch (err) {
+      console.error("Failed to get auth ticket:", err);
+      return null;
+    }
+  });
+  electron.ipcMain.handle("get-steam-friends", () => {
+    if (!client) return [];
+    if (!client.friends) {
+      console.warn("Steam Friends interface not available in this version of steamworks.js");
+      return [
+        { id: "76561198000000001", name: "Sir William (Mock)", status: 1, avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=William" },
+        { id: "76561198000000002", name: "The Snake (Mock)", status: 6, avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Snake" },
+        { id: "76561198000000003", name: "The Rat (Mock)", status: 0, avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Rat" }
+      ];
+    }
+    const friends = client.friends.getFriends(4);
+    return friends.map((f) => ({
+      id: f.getSteamId().steamId64.toString(),
+      name: f.getName(),
+      status: f.getPersonaState(),
+      // 0=Offline, 1=Online, etc.
+      avatar: f.getMediumAvatarUrl()
+    }));
+  });
+  electron.ipcMain.handle("steam-create-lobby", async (_, maxMembers = 8, lobbyName = "Lobby", gameMode = "crusader") => {
+    if (!client) throw new Error("Steam not initialized");
+    try {
+      currentLobby = await client.matchmaking.createLobby(2, maxMembers);
+      console.log("Created lobby:", currentLobby.id);
+      const nameSet = currentLobby.setData("name", lobbyName);
+      if (!nameSet) {
+        console.warn("Failed to set lobby name");
+      }
+      const gameModeSet = currentLobby.setData("gameMode", gameMode);
+      if (!gameModeSet) {
+        console.warn("Failed to set game mode");
+      }
+      currentLobby.setData("status", "Open");
+      currentLobby.setData("status", "Open");
+      return {
+        id: currentLobby.id.toString(),
+        owner: currentLobby.getOwner().steamId64.toString(),
+        name: lobbyName,
+        gameMode
+      };
+    } catch (err) {
+      console.error("Failed to create lobby:", err);
+      throw err;
+    }
+  });
+  electron.ipcMain.handle("steam-get-lobbies", async () => {
+    if (!client) return [];
+    try {
+      const lobbies = await client.matchmaking.getLobbies();
+      return lobbies.map((l) => {
+        const data = l.getFullData();
+        const hasGameServer = data.__gameserverSteamID && data.__gameserverSteamID !== "0";
+        const isInGame = hasGameServer || l.getData("status") === "In Game";
+        return {
+          id: l.id.toString(),
+          memberCount: l.getMemberCount(),
+          maxMembers: l.getMemberLimit(),
+          name: l.getData("name") || "Unnamed Lobby",
+          gameMode: l.getData("gameMode") || "crusader",
+          isInGame
+        };
+      });
+    } catch (err) {
+      console.error("Failed to get lobbies:", err);
+      return [];
+    }
+  });
+  electron.ipcMain.handle("steam-join-lobby", async (_, lobbyId) => {
+    if (!client) throw new Error("Steam not initialized");
+    try {
+      console.log("Joining lobby:", lobbyId);
+      currentLobby = await client.matchmaking.joinLobby(BigInt(lobbyId));
+      return {
+        id: currentLobby.id.toString(),
+        owner: currentLobby.getOwner().steamId64.toString()
+      };
+    } catch (err) {
+      console.error("Failed to join lobby:", err);
+      throw err;
+    }
+  });
+  electron.ipcMain.handle("steam-leave-lobby", async () => {
+    if (currentLobby) {
+      console.log("Leaving lobby:", currentLobby.id);
+      await currentLobby.leave();
+      currentLobby = null;
+    }
+  });
+  electron.ipcMain.handle("steam-get-lobby-members", async () => {
+    if (!currentLobby) return [];
+    try {
+      const members = currentLobby.getMembers();
+      const memberData = [];
+      for (const m of members) {
+        const steamId = m.steamId64;
+        let name = steamId.toString();
+        if (client.localplayer && steamId === client.localplayer.getSteamId().steamId64) {
+          name = client.localplayer.getName();
+        } else {
+          try {
+            const personaName = currentLobby.getMemberData(steamId, "name");
+            if (personaName) {
+              name = personaName;
+            }
+          } catch (e) {
+          }
+        }
+        memberData.push({
+          id: steamId.toString(),
+          name
+        });
+      }
+      return memberData;
+    } catch (err) {
+      console.error("Failed to get lobby members:", err);
+      return [];
+    }
+  });
+  electron.ipcMain.handle("steam-send-lobby-chat", async (_, message) => {
+    if (!currentLobby) throw new Error("Not in a lobby");
+    try {
+      const success = currentLobby.sendChatMsg(message);
+      if (!success) {
+        console.error("Failed to send lobby chat message");
+      }
+      return success;
+    } catch (err) {
+      console.error("Error sending lobby chat:", err);
+      throw err;
+    }
+  });
+  electron.ipcMain.handle("steam-setup-lobby-chat-listener", async () => {
+    if (!currentLobby || !client) return false;
+    try {
+      client.matchmaking.on("lobby-chat-message", (lobbyId, sender, message) => {
+        if (currentLobby && lobbyId.toString() === currentLobby.id.toString()) {
+          let senderName = sender.steamId64.toString();
+          if (client.localplayer && sender.steamId64 === client.localplayer.getSteamId().steamId64) {
+            senderName = client.localplayer.getName();
+          } else {
+            try {
+              const name = currentLobby.getMemberData(sender.steamId64, "name");
+              if (name) senderName = name;
+            } catch (e) {
+            }
+          }
+          const windows = electron.BrowserWindow.getAllWindows();
+          if (windows.length > 0) {
+            windows[0].webContents.send("lobby-chat-message", {
+              senderId: sender.steamId64.toString(),
+              senderName,
+              message,
+              timestamp: (/* @__PURE__ */ new Date()).toISOString()
+            });
+          }
+        }
+      });
+      return true;
+    } catch (err) {
+      console.error("Error setting up lobby chat listener:", err);
+      return false;
+    }
+  });
+}
+function getGameInstallDir() {
+  if (!client) {
+    console.error("getGameInstallDir: Client is null");
+    return null;
+  }
+  try {
+    console.log("getGameInstallDir: Attempting to get install dir for 40970");
+    const dir = client.apps.appInstallDir(40970);
+    console.log("getGameInstallDir: Result:", dir);
+    return dir;
+  } catch (err) {
+    console.error("getGameInstallDir: Failed to get install dir:", err);
+    return null;
+  }
+}
+let mainWindow = null;
+function setMainWindow(win2) {
+  mainWindow = win2;
+}
+function setupGameHandlers() {
+  electron.ipcMain.handle("select-game-path", async () => {
+    const result = await electron.dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [{ name: "Executables", extensions: ["exe"] }]
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0];
+    }
+    return null;
+  });
+  electron.ipcMain.handle("launch-game", async (_, gamePath, args) => {
+    if (!fs.existsSync(gamePath)) {
+      throw new Error("Game executable not found");
+    }
+    const argsArray = args.split(" ").filter((arg) => arg.length > 0);
+    const cwd = path.dirname(gamePath);
+    console.log(`Launching game: "${gamePath}" with args: ${argsArray} in ${cwd}`);
+    try {
+      const child = child_process.spawn(`"${gamePath}"`, argsArray, {
+        cwd,
+        detached: true,
+        shell: true,
+        windowsVerbatimArguments: true
+        // Helps with argument parsing on Windows
+      });
+      child.on("error", (err) => {
+        console.error("Failed to start game:", err);
+      });
+      child.on("close", (code) => {
+        console.log(`Game process closed with code ${code}`);
+        if (mainWindow) {
+          mainWindow.webContents.send("game-exited", code);
+        }
+      });
+      child.unref();
+      return { success: true };
+    } catch (error) {
+      console.error("Launch error:", error);
+      return { success: false, error: error.message };
+    }
+  });
+  electron.ipcMain.handle("launch-steam-game", async (_, args, gameMode = "crusader", customPath) => {
+    let installDir = null;
+    let gamePath = null;
+    if (customPath && fs.existsSync(customPath)) {
+      console.log("Using custom game path:", customPath);
+      gamePath = customPath;
+      installDir = path.dirname(customPath);
+    } else {
+      console.log("Attempting to auto-detect game path...");
+      installDir = getGameInstallDir();
+    }
+    if (!installDir && !gamePath) {
+      console.error("Could not detect game install directory");
+      const encodedArgs = encodeURIComponent(args).replace(/%2B/g, "+");
+      const url = `steam://run/40970//${encodedArgs}`;
+      console.log("Fallback to Steam URL:", url);
+      try {
+        await electron.shell.openExternal(url);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
+    if (!gamePath) {
+      const exeName = gameMode === "extreme" ? "Stronghold_Crusader_Extreme.exe" : "Stronghold Crusader.exe";
+      gamePath = path.join(installDir, exeName);
+      console.log("Auto-detected game path:", gamePath, "(Mode:", gameMode, ")");
+    }
+    if (!fs.existsSync(gamePath)) {
+      console.error("Executable not found at:", gamePath);
+      return { success: false, error: `Executable not found: ${gamePath}` };
+    }
+    const argsArray = args.split(" ").filter((arg) => arg.length > 0);
+    argsArray.push("--ucp-verbosity 10");
+    argsArray.push("--ucp-no-security");
+    console.log("Launching with arguments:", args, "-> Array:", argsArray);
+    try {
+      const child = child_process.spawn(`"${gamePath}"`, argsArray, {
+        cwd: installDir || path.dirname(gamePath),
+        detached: true,
+        shell: true,
+        windowsVerbatimArguments: true
+      });
+      child.unref();
+      return { success: true };
+    } catch (error) {
+      console.error("Launch error:", error);
+      return { success: false, error: error.message };
+    }
+  });
+}
+function setupDownloaderHandlers() {
+  electron.ipcMain.handle("download-file", async (_, url, filename, targetFolder) => {
+    try {
+      console.log(`Starting download: ${url} -> ${filename}`);
+      let downloadPath = "";
+      if (targetFolder === "maps") {
+        downloadPath = path.join(electron.app.getPath("documents"), "Stronghold Crusader", "Maps");
+      } else if (targetFolder === "ucp") {
+        downloadPath = path.join(electron.app.getPath("userData"), "UCP");
+      } else {
+        downloadPath = path.join(electron.app.getPath("downloads"));
+      }
+      if (!fs.existsSync(downloadPath)) {
+        fs.mkdirSync(downloadPath, { recursive: true });
+      }
+      const filePath = path.join(downloadPath, filename);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+      if (!response.body) throw new Error("No response body");
+      const stream$1 = stream.Readable.fromWeb(response.body);
+      await promises.pipeline(stream$1, fs.createWriteStream(filePath));
+      console.log(`Download complete: ${filePath}`);
+      return { success: true, path: filePath };
+    } catch (error) {
+      console.error("Download error:", error);
+      return { success: false, error: error.message };
+    }
+  });
+}
+setupGameHandlers();
+setupDownloaderHandlers();
+initSteam();
+setupSteamHandlers();
+process.env.DIST = path.join(__dirname, "../dist");
+process.env.VITE_PUBLIC = electron.app.isPackaged ? process.env.DIST : path.join(process.env.DIST, "../public");
+let win;
+const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+function createWindow() {
+  const publicPath = process.env.VITE_PUBLIC || "";
+  win = new electron.BrowserWindow({
+    width: 1200,
+    height: 800,
+    icon: path.join(publicPath, "electron-vite.svg"),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      nodeIntegration: true,
+      contextIsolation: true
+    },
+    backgroundColor: "#1a1a1a",
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#1a1a1a",
+      symbolColor: "#ffffff",
+      height: 30
+    }
+  });
+  setMainWindow(win);
+  win.webContents.on("did-finish-load", () => {
+    win?.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
+  });
+  if (VITE_DEV_SERVER_URL) {
+    win.loadURL(VITE_DEV_SERVER_URL);
+    win.webContents.openDevTools();
+  } else {
+    win.loadFile(path.join(process.env.DIST || "", "index.html"));
+  }
+}
+electron.app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    electron.app.quit();
+  }
+});
+electron.app.on("activate", () => {
+  if (electron.BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});
+electron.app.whenReady().then(createWindow);

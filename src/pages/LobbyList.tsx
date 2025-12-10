@@ -176,14 +176,25 @@ const LobbyList: React.FC = () => {
                                         {lobby.gameMode === 'extreme' ? '⚡ EXTREME' : '🏰 CRUSADER'}
                                     </span>
                                 </div>
+                                {/* @ts-ignore */}
+                                {lobby.isInGame && (
+                                    <div className="bg-red-500/20 text-red-400 text-xs px-2 py-1 rounded text-center font-bold mt-2">
+                                        IN GAME
+                                    </div>
+                                )}
                             </div>
 
                             <Button
                                 variant="outline"
-                                className="w-full group-hover:bg-primary group-hover:text-black group-hover:border-primary"
-                                onClick={() => handleJoin(lobby.id)}
+                                // @ts-ignore
+                                className={`w-full ${lobby.isInGame ? 'opacity-50 cursor-not-allowed' : 'group-hover:bg-primary group-hover:text-black group-hover:border-primary'}`}
+                                // @ts-ignore
+                                onClick={() => !lobby.isInGame && handleJoin(lobby.id)}
+                                // @ts-ignore
+                                disabled={lobby.isInGame}
                             >
-                                Join Game
+                                {/* @ts-ignore */}
+                                {lobby.isInGame ? 'In Game' : 'Join Game'}
                             </Button>
                         </div>
                     )

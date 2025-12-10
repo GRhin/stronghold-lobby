@@ -1,7 +1,7 @@
 export interface ElectronAPI {
     selectGamePath: () => Promise<string | null>
     launchGame: (path: string, args: string) => Promise<{ success: boolean; error?: string }>
-    launchSteamGame: (args: string, gameMode?: 'crusader' | 'extreme') => Promise<{ success: boolean; error?: string }>
+    launchSteamGame: (args: string, gameMode?: 'crusader' | 'extreme', customPath?: string) => Promise<{ success: boolean; error?: string }>
     downloadFile: (url: string, filename: string, targetFolder: string) => Promise<string>
     saveSettings: (settings: any) => void
     onGameExited: (callback: (code: number) => void) => () => void

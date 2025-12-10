@@ -77,6 +77,12 @@ export function setupSteamHandlers() {
                 console.warn('Failed to set game mode')
             }
 
+            // Set status to Open
+            currentLobby.setData('status', 'Open')
+
+            // Initialize status to Open (fallback for when not using game server logic)
+            currentLobby.setData('status', 'Open')
+
             return {
                 id: currentLobby.id.toString(),
                 owner: currentLobby.getOwner().steamId64.toString(),
@@ -93,13 +99,24 @@ export function setupSteamHandlers() {
         if (!client) return []
         try {
             const lobbies = await client.matchmaking.getLobbies()
-            return lobbies.map((l: any) => ({
-                id: l.id.toString(),
-                memberCount: l.getMemberCount(),
-                maxMembers: l.getMemberLimit(),
-                name: l.getData('name') || 'Unnamed Lobby',
-                gameMode: (l.getData('gameMode') as 'crusader' | 'extreme') || 'crusader'
-            }))
+
+            return lobbies.map((l: any) => {
+                // Check if lobby has a game server associated (indicates in-game)
+                // UCP lobbies and our lobbies that have launched will have __gameserverSteamID set
+                const data = l.getFullData()
+                const hasGameServer = data.__gameserverSteamID && data.__gameserverSteamID !== '0'
+                const isInGame = hasGameServer || l.getData('status') === 'In Game'
+
+
+                return {
+                    id: l.id.toString(),
+                    memberCount: l.getMemberCount(),
+                    maxMembers: l.getMemberLimit(),
+                    name: l.getData('name') || 'Unnamed Lobby',
+                    gameMode: (l.getData('gameMode') as 'crusader' | 'extreme') || 'crusader',
+                    isInGame
+                }
+            })
         } catch (err) {
             console.error('Failed to get lobbies:', err)
             return []
@@ -111,6 +128,9 @@ export function setupSteamHandlers() {
         try {
             console.log('Joining lobby:', lobbyId)
             currentLobby = await client.matchmaking.joinLobby(BigInt(lobbyId))
+
+
+
             return {
                 id: currentLobby.id.toString(),
                 owner: currentLobby.getOwner().steamId64.toString()
@@ -143,12 +163,16 @@ export function setupSteamHandlers() {
                 if (client.localplayer && steamId === client.localplayer.getSteamId().steamId64) {
                     name = client.localplayer.getName()
                 } else {
-                    // Request member data from Steam (this triggers Steam to fetch the data)
-                    currentLobby.requestLobbyMemberData(steamId)
-                    // Use getMemberData to retrieve the username
-                    const personaName = currentLobby.getMemberData(steamId, 'name')
-                    if (personaName) {
-                        name = personaName
+                    // Try to get member data if available
+                    // Note: requestLobbyMemberData is not available in this steamworks.js version
+                    // We rely on Steam's auto-sync or what's already cached
+                    try {
+                        const personaName = currentLobby.getMemberData(steamId, 'name')
+                        if (personaName) {
+                            name = personaName
+                        }
+                    } catch (e) {
+                        // Ignore errors fetching member data
                     }
                 }
 
@@ -195,9 +219,10 @@ export function setupSteamHandlers() {
                     if (client.localplayer && sender.steamId64 === client.localplayer.getSteamId().steamId64) {
                         senderName = client.localplayer.getName()
                     } else {
-                        currentLobby.requestLobbyMemberData(sender.steamId64)
-                        const name = currentLobby.getMemberData(sender.steamId64, 'name')
-                        if (name) senderName = name
+                        try {
+                            const name = currentLobby.getMemberData(sender.steamId64, 'name')
+                            if (name) senderName = name
+                        } catch (e) { }
                     }
 
                     // Send to renderer process

@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('electron', {
     selectGamePath: () => ipcRenderer.invoke('select-game-path'),
     launchGame: (path: string, args: string) => ipcRenderer.invoke('launch-game', path, args),
-    launchSteamGame: (args: string, gameMode?: 'crusader' | 'extreme') => ipcRenderer.invoke('launch-steam-game', args, gameMode),
+    launchSteamGame: (args: string, gameMode?: 'crusader' | 'extreme', customPath?: string) => ipcRenderer.invoke('launch-steam-game', args, gameMode, customPath),
     downloadFile: (url: string, filename: string, targetFolder: string) => ipcRenderer.invoke('download-file', url, filename, targetFolder),
     saveSettings: (settings: any) => console.log('Save settings (mock)', settings), // Placeholder
     onGameExited: (callback: (code: number) => void) => {
