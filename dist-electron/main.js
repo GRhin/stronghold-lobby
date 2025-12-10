@@ -117,6 +117,15 @@ function setupSteamHandlers() {
       throw err;
     }
   });
+  electron.ipcMain.handle("steam-set-lobby-data", async (_, key, value) => {
+    if (!currentLobby) throw new Error("Not in a lobby");
+    try {
+      return currentLobby.setData(key, value);
+    } catch (err) {
+      console.error("Failed to set lobby data:", err);
+      return false;
+    }
+  });
   electron.ipcMain.handle("steam-leave-lobby", async () => {
     if (currentLobby) {
       console.log("Leaving lobby:", currentLobby.id);
@@ -131,6 +140,7 @@ function setupSteamHandlers() {
       const memberData = [];
       for (const m of members) {
         const steamId = m.steamId64;
+        if (!steamId || steamId.toString() === "0") continue;
         let name = steamId.toString();
         if (client.localplayer && steamId === client.localplayer.getSteamId().steamId64) {
           name = client.localplayer.getName();
@@ -303,6 +313,12 @@ function setupGameHandlers() {
         detached: true,
         shell: true,
         windowsVerbatimArguments: true
+      });
+      child.on("close", (code) => {
+        console.log(`Steam Game process closed with code ${code}`);
+        if (mainWindow) {
+          mainWindow.webContents.send("game-exited", code);
+        }
       });
       child.unref();
       return { success: true };

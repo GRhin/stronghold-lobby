@@ -11,7 +11,7 @@ const LobbyRoom: React.FC = () => {
     const navigate = useNavigate()
 
     const { user } = useUser()
-    const { currentLobby, leaveLobby } = useSteam()
+    const { currentLobby, leaveLobby, createLobby, joinLobby } = useSteam()
     const { crusaderPath, extremePath } = useSettings()
 
     const [messages, setMessages] = useState<any[]>([])
@@ -19,6 +19,14 @@ const LobbyRoom: React.FC = () => {
     const [launchStatus, setLaunchStatus] = useState<string | null>(null)
 
     const isHost = currentLobby && user ? currentLobby.owner === user.steamId : false
+    const pendingLobbyIdRef = React.useRef<string | null>(null)
+
+    // Clear pending ID when currentLobby updates to match it
+    useEffect(() => {
+        if (currentLobby && currentLobby.id === pendingLobbyIdRef.current) {
+            pendingLobbyIdRef.current = null
+        }
+    }, [currentLobby])
 
     useEffect(() => {
         // Listen for chat messages from server
@@ -87,6 +95,154 @@ const LobbyRoom: React.FC = () => {
             socket.off('steam:game_launching')
         }
     }, [currentLobby])
+
+    // --- Persistent Lobby Logic ---
+
+    // 1. Listen for Server Lobby updates (e.g., Steam ID changes) in currentLobby context?
+    // Actually, LobbyRoom relies on 'currentLobby' from SteamContext which is purely local/steam state.
+    // We need to listen to socket events for the *Server* lobby state to sync.
+    // Wait, LobbyRoom is currently built purely around SteamContext.currentLobby.
+    // To support persistence, we need to bridge the two.
+
+    // Let's assume we are in a Server Lobby if `socket` has one.
+    // Clear launch status when lobby changes
+    useEffect(() => {
+        setLaunchStatus(null)
+    }, [currentLobby?.id])
+
+    // 1. Listen for Server Lobby updates (e.g., Steam ID changes) in currentLobby context?
+    // Actually, LobbyRoom relies on 'currentLobby' from SteamContext which is purely local/steam state.
+    // We need to listen to socket events for the *Server* lobby state to sync.
+    // Wait, LobbyRoom is currently built purely around SteamContext.currentLobby.
+    // To support persistence, we need to bridge the two.
+
+    // Let's assume we are in a Server Lobby if `socket` has one.
+    // We need a way to know WHICH server lobby we are in.
+    // The `LobbyProvider` (not used in this file yet) should track this.
+
+    // For now, let's implement a listener for 'lobby:update' if we can determine we are in that lobby.
+    useEffect(() => {
+        const handleLobbyUpdate = async (updatedLobby: any) => {
+            // Check if this update is for us
+            // ideally we check if updatedLobby.steamLobbyId != currentSteamLobby.id
+            if (!currentLobby) return
+
+            // If WE are the host of the server lobby, we ignore updates because we act as the source of truth.
+            // This prevents the host from trying to "join" a new lobby ID that it just created itself.
+            if (updatedLobby.hostId === socket.id) return
+
+            // If this update matches our pending lobby ID, we are already transitioning, so ignore.
+            if (pendingLobbyIdRef.current && updatedLobby.steamLobbyId === pendingLobbyIdRef.current) return
+
+            if (updatedLobby.steamLobbyId && updatedLobby.steamLobbyId !== currentLobby.id) {
+                console.log('Persistent Lobby: Steam ID changed, moving to new lobby...', updatedLobby.steamLobbyId)
+                try {
+                    // Use Context method so UI updates
+                    await joinLobby(updatedLobby.steamLobbyId)
+                } catch (e) {
+                    console.error('Failed to auto-join new steam lobby:', e)
+                }
+            }
+        }
+
+        socket.on('lobby:update', handleLobbyUpdate)
+        return () => {
+            socket.off('lobby:update', handleLobbyUpdate)
+        }
+    }, [currentLobby])
+
+    // Listen for game exit to reset status
+    useEffect(() => {
+        const handleGameExit = async (code: number) => {
+            console.log('Game exited with code:', code)
+            setLaunchStatus(null)
+
+            if (isHost && currentLobby) {
+                // Reset lobby status to Open so it shows as joinable in browser
+                try {
+                    await window.electron.setLobbyData('status', 'Open')
+                } catch (err) {
+                    console.error('Failed to reset lobby status:', err)
+                }
+            }
+        }
+
+        window.electron.onGameExited(handleGameExit)
+        return () => {
+            window.electron.removeGameExitedListener(handleGameExit)
+        }
+    }, [isHost, currentLobby])
+
+    // 2. Host Reform Logic
+    // If we are Host, and we detect we aren't in a Steam lobby (but should be), recreate it.
+
+    useEffect(() => {
+        let isServerHost = false
+
+        const recreateSteamLobby = async (serverLobby: any) => {
+            try {
+                console.log('Recreating Steam Lobby...')
+                const name = serverLobby.name
+                // Use Context method to ensure local state triggers immediately (skipServerCreate=true)
+                const steamId = await createLobby(serverLobby.maxPlayers, name, 'crusader', true)
+                pendingLobbyIdRef.current = steamId
+                console.log('Steam Lobby Recreated:', steamId)
+
+            } catch (err) {
+                console.error('Failed to reform lobby:', err)
+            }
+        }
+
+        const checkHost = (lobby: any) => {
+            if (lobby && user && lobby.hostId === socket.id) {
+                isServerHost = true
+
+                const serverCount = lobby.players ? lobby.players.length : 1
+                const steamCount = currentLobby ? currentLobby.members.length : 0
+
+                const serverSteamId = lobby.steamLobbyId
+                const currentSteamId = currentLobby ? currentLobby.id : null
+
+                // 1. "Dead Lobby" check: currentLobby is null OR has 0 members
+                const isLobbyDead = !currentLobby || steamCount === 0
+
+                // 2. "Desync" check: Server has group (persistent), but Steam only has me (split/broken)
+                const isLobbyDesync = serverCount > 1 && steamCount === 1
+
+                // 3. "ID Mismatch" check: The lobby ID changed (e.g. game created new one), but Server has old one.
+                const isIdMismatch = serverSteamId && currentSteamId && serverSteamId !== currentSteamId
+
+                if (isIdMismatch && isServerHost) {
+                    // Check if this mismatch is due to a pending update we initiated
+                    if (pendingLobbyIdRef.current && serverSteamId === pendingLobbyIdRef.current) {
+                        console.log('Host Reform: Ignoring mismatch due to pending state update')
+                        return
+                    }
+
+                    console.log('Host Reform: ID Mismatch detected. Updating Server...')
+                    // Only revert if we are SURE. If we have a pending ID, we assume logic elsewhere handles it.
+                    if (!pendingLobbyIdRef.current) {
+                        socket.emit('lobby:set_steam_id', { steamLobbyId: currentSteamId })
+                    }
+                    return // Exit to let update propagate
+                }
+
+                if ((isLobbyDead || isLobbyDesync) && isServerHost) {
+                    console.log('Host Reform: Condition MET (Dead/Desync). Recreating...')
+                    recreateSteamLobby(lobby)
+                }
+            }
+        }
+
+        socket.on('lobby:update', checkHost)
+        socket.on('lobby:joined', checkHost)
+        socket.emit('lobby:get-current')
+
+        return () => {
+            socket.off('lobby:update', checkHost)
+            socket.off('lobby:joined', checkHost)
+        }
+    }, [currentLobby, user])
 
     const handleLeave = async () => {
         await leaveLobby()

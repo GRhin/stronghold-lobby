@@ -10,6 +10,7 @@ import { SettingsProvider } from './context/SettingsContext'
 import { UserProvider } from './context/UserContext'
 import { LobbyProvider } from './context/LobbyContext'
 import { SteamProvider } from './context/SteamContext'
+import ConnectionOverlay from './components/ConnectionOverlay'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <LobbyProvider>
           <SteamProvider>
             <HashRouter>
+              <ConnectionOverlay />
               <div className="min-h-screen bg-background text-white font-sans">
                 <Routes>
                   <Route path="/" element={<Auth />} />

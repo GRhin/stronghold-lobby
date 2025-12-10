@@ -11,8 +11,8 @@ interface SteamLobby {
 
 interface SteamContextType {
     currentLobby: SteamLobby | null
-    createLobby: (maxMembers?: number, lobbyName?: string, gameMode?: 'crusader' | 'extreme') => Promise<void>
-    joinLobby: (lobbyId: string) => Promise<void>
+    createLobby: (maxMembers?: number, lobbyName?: string, gameMode?: 'crusader' | 'extreme', skipServerCreate?: boolean) => Promise<string>
+    joinLobby: (lobbyId: string) => Promise<string>
     leaveLobby: () => Promise<void>
     refreshLobbyMembers: () => Promise<void>
     lobbies: Array<{ id: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme' }>
@@ -35,7 +35,7 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
     }, [currentLobby?.id]) // Depend on ID to avoid stale closure issues if object changes
 
-    const createLobby = useCallback(async (maxMembers: number = 8, lobbyName: string = 'Lobby', gameMode: 'crusader' | 'extreme' = 'crusader') => {
+    const createLobby = useCallback(async (maxMembers: number = 8, lobbyName: string = 'Lobby', gameMode: 'crusader' | 'extreme' = 'crusader', skipServerCreate: boolean = false) => {
         try {
             const result = await window.electron.createLobby(maxMembers, lobbyName, gameMode)
             // Initialize with owner (self)
@@ -50,8 +50,27 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 members: initialMembers
             })
 
+            // Create persistent server lobby if not skipping
+            if (!skipServerCreate) {
+                socket.emit('lobby:create', {
+                    name: lobbyName,
+                    maxPlayers: maxMembers,
+                    isRated: false, // Default for now
+                    hostName: user?.name,
+                    map: 'Unknown'
+                })
+            }
+
+            // Link the two by setting the steam ID on the server lobby we just joined
+            // verify we are creating the connection after a short delay to ensure server processed create? 
+            // Actually, socket events are sequential. But 'lobby:create' logic joins the room immediately.
+            // So we can emit set_steam_id right after.
+            socket.emit('lobby:set_steam_id', { steamLobbyId: result.id })
+
             // Notify server for game launch coordination
             socket.emit('steam:lobby_joined', result.id)
+
+            return result.id
         } catch (err) {
             console.error('Failed to create lobby:', err)
             throw err
@@ -74,6 +93,8 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
             // Notify server for game launch coordination
             socket.emit('steam:lobby_joined', result.id)
+
+            return result.id
         } catch (err) {
             console.error('Failed to join lobby:', err)
             throw err

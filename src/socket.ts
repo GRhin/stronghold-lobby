@@ -14,4 +14,6 @@ console.log(`Connecting to server: ${SERVER_URL} (${isDevelopment ? 'Development
 export const socket: Socket = io(SERVER_URL, {
     autoConnect: true,
     reconnection: true,
+    reconnectionDelay: 5000,
+    reconnectionDelayMax: 5000,
 })

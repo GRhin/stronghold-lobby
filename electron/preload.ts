@@ -11,10 +11,14 @@ contextBridge.exposeInMainWorld('electron', {
         ipcRenderer.on('game-exited', subscription)
         return () => ipcRenderer.removeListener('game-exited', subscription)
     },
+    removeGameExitedListener: (callback: any) => {
+        ipcRenderer.removeListener('game-exited', callback)
+    },
     getSteamUser: () => ipcRenderer.invoke('get-steam-user'),
     getAuthTicket: () => ipcRenderer.invoke('get-auth-ticket'),
     getSteamFriends: () => ipcRenderer.invoke('get-steam-friends'),
     createLobby: (maxMembers: number, lobbyName?: string, gameMode?: 'crusader' | 'extreme') => ipcRenderer.invoke('steam-create-lobby', maxMembers, lobbyName, gameMode),
+    setLobbyData: (key: string, value: string) => ipcRenderer.invoke('steam-set-lobby-data', key, value),
     getLobbies: () => ipcRenderer.invoke('steam-get-lobbies'),
     joinLobby: (lobbyId: string) => ipcRenderer.invoke('steam-join-lobby', lobbyId),
     leaveLobby: () => ipcRenderer.invoke('steam-leave-lobby'),

@@ -12,10 +12,14 @@ electron.contextBridge.exposeInMainWorld("electron", {
     electron.ipcRenderer.on("game-exited", subscription);
     return () => electron.ipcRenderer.removeListener("game-exited", subscription);
   },
+  removeGameExitedListener: (callback) => {
+    electron.ipcRenderer.removeListener("game-exited", callback);
+  },
   getSteamUser: () => electron.ipcRenderer.invoke("get-steam-user"),
   getAuthTicket: () => electron.ipcRenderer.invoke("get-auth-ticket"),
   getSteamFriends: () => electron.ipcRenderer.invoke("get-steam-friends"),
   createLobby: (maxMembers, lobbyName, gameMode) => electron.ipcRenderer.invoke("steam-create-lobby", maxMembers, lobbyName, gameMode),
+  setLobbyData: (key, value) => electron.ipcRenderer.invoke("steam-set-lobby-data", key, value),
   getLobbies: () => electron.ipcRenderer.invoke("steam-get-lobbies"),
   joinLobby: (lobbyId) => electron.ipcRenderer.invoke("steam-join-lobby", lobbyId),
   leaveLobby: () => electron.ipcRenderer.invoke("steam-leave-lobby"),

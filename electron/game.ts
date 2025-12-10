@@ -123,6 +123,13 @@ export function setupGameHandlers() {
                 windowsVerbatimArguments: true
             })
 
+            child.on('close', (code) => {
+                console.log(`Steam Game process closed with code ${code}`)
+                if (mainWindow) {
+                    mainWindow.webContents.send('game-exited', code)
+                }
+            })
+
             child.unref()
             return { success: true }
         } catch (error: any) {

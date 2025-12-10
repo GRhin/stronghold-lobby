@@ -411,6 +411,7 @@ io.on('connection', (socket) => {
             map: data.map || 'Unknown',
             maxPlayers: data.maxPlayers || 8,
             isRated: !!data.isRated,
+            steamLobbyId: null, // Link to transient Steam lobby
             status: 'Open',
             players: [{
                 id: socket.id,
@@ -429,6 +430,27 @@ io.on('connection', (socket) => {
         socket.emit('lobby:joined', newLobby)
 
         console.log('Lobby created:', newLobby.name)
+    })
+
+    /**
+     * Update the Steam Lobby ID associated with a server lobby.
+     * Use this when the host creates/re-creates the Steam lobby.
+     */
+    socket.on('lobby:set_steam_id', (data) => {
+        // data: { steamLobbyId }
+        const lobby = findLobbyBySocketId(socket.id)
+        if (!lobby) return
+
+        // Only host can update the link
+        if (lobby.hostId !== socket.id) {
+            console.log('Unauthorized steam ID update attempt')
+            return
+        }
+
+        lobby.steamLobbyId = data.steamLobbyId
+        io.to(lobby.id).emit('lobby:update', lobby)
+        io.emit('lobby:list', lobbies)
+        console.log(`Lobby ${lobby.name} linked to Steam Lobby ${data.steamLobbyId}`)
     })
 
     /**
@@ -654,6 +676,37 @@ io.on('connection', (socket) => {
         if (user) {
             user.currentSteamLobby = lobbyId
             console.log(`${user.name} joined Steam lobby ${lobbyId}`)
+
+            // Check if this Steam lobby corresponds to a persistent Server lobby
+            const serverLobby = lobbies.find(l => l.steamLobbyId === lobbyId)
+            if (serverLobby) {
+                // Check if already in this lobby to avoid duplicates
+                const alreadyIn = serverLobby.players.some(p => p.id === socket.id)
+                if (!alreadyIn) {
+                    // Leave other lobbies first
+                    const currentLobby = findLobbyBySocketId(socket.id)
+                    if (currentLobby && currentLobby.id !== serverLobby.id) {
+                        handleLeaveLobby(socket)
+                    }
+
+                    // Add to server lobby
+                    const newPlayer = {
+                        id: socket.id,
+                        steamId: user.steamId,
+                        name: user.name,
+                        isHost: false, // Steam joiners are never host of the server lobby initially
+                        rating: user.rating
+                    }
+                    serverLobby.players.push(newPlayer)
+                    socket.join(serverLobby.id)
+
+                    // Sync updates
+                    io.to(serverLobby.id).emit('lobby:update', serverLobby)
+                    socket.emit('lobby:joined', serverLobby)
+                    io.emit('lobby:list', lobbies)
+                    console.log(`Auto-joined ${user.name} to persistent lobby ${serverLobby.name}`)
+                }
+            }
         }
     })
 
