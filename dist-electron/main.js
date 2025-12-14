@@ -252,6 +252,8 @@ function setupGameHandlers() {
         cwd,
         detached: true,
         shell: true,
+        stdio: "ignore",
+        // Prevents game window from being blocked by parent process
         windowsVerbatimArguments: true
         // Helps with argument parsing on Windows
       });
@@ -312,6 +314,8 @@ function setupGameHandlers() {
         cwd: installDir || path.dirname(gamePath),
         detached: true,
         shell: true,
+        stdio: "ignore",
+        // Prevents game window from being blocked by parent process
         windowsVerbatimArguments: true
       });
       child.on("close", (code) => {

@@ -6,6 +6,8 @@ import ReportResultModal from '../components/ReportResultModal'
 import { useUser } from '../context/UserContext'
 import { useSteam } from '../context/SteamContext'
 import { useSettings } from '../context/SettingsContext'
+import { useChat } from '../context/ChatContext'
+import { useSmartScroll } from '../hooks/useSmartScroll'
 import { socket } from '../socket'
 
 const LobbyRoom: React.FC = () => {
@@ -14,8 +16,17 @@ const LobbyRoom: React.FC = () => {
     const { user } = useUser()
     const { currentLobby, leaveLobby, createLobby, joinLobby } = useSteam()
     const { crusaderPath, extremePath } = useSettings()
+    const { lobbyMessages, clearLobbyMessages } = useChat()
+    const chatContainerRef = useSmartScroll(lobbyMessages)
 
-    const [messages, setMessages] = useState<any[]>([])
+    // Clear messages when joining a new lobby
+    useEffect(() => {
+        // If we have a current lobby but it's different from the one we have messages for?
+        // Actually, we can just rely on manual clearing when leaving.
+        // But if we join a new lobby directly (e.g. invite), we might want to clear.
+        // For now, let's assume handleLeave covers most cases.
+    }, [currentLobby?.id])
+
     const [chatInput, setChatInput] = useState('')
     const [launchStatus, setLaunchStatus] = useState<string | null>(null)
     const [serverLobby, setServerLobby] = useState<any>(null)
@@ -37,14 +48,9 @@ const LobbyRoom: React.FC = () => {
         setLaunchStatus(null)
     }, [currentLobby?.id])
 
-    // 1. Socket Listeners (Chat & Game Launch)
+    // 1. Socket Listeners (Game Launch)
     useEffect(() => {
-        // Listen for chat messages from server
-        const handleChatMessage = (msg: any) => {
-            if (msg.channel === 'lobby') {
-                setMessages(prev => [...prev, msg])
-            }
-        }
+        // NOTE: Chat messages are now handled in ChatContext globally
 
         // Listen for game launch command from server
         const handleGameLaunch = async (data: { isHost: boolean, lobbyId: string }) => {
@@ -100,11 +106,9 @@ const LobbyRoom: React.FC = () => {
             }
         }
 
-        socket.on('chat:message', handleChatMessage)
         socket.on('steam:game_launching', handleGameLaunch)
 
         return () => {
-            socket.off('chat:message', handleChatMessage)
             socket.off('steam:game_launching', handleGameLaunch)
         }
     }, [currentLobby, crusaderPath, extremePath])
@@ -114,22 +118,44 @@ const LobbyRoom: React.FC = () => {
         const handleLobbyUpdate = async (updatedLobby: any) => {
             if (isLeavingRef.current) return
 
-            // Check if this update is for us
-            if (!currentLobby) return
-
             // If WE are the host of the server lobby, we ignore updates because we act as the source of truth.
             if (updatedLobby.hostId === socket.id) return
 
             // If this update matches our pending lobby ID, we are already transitioning, so ignore.
             if (pendingLobbyIdRef.current && updatedLobby.steamLobbyId === pendingLobbyIdRef.current) return
 
-            if (updatedLobby.steamLobbyId && updatedLobby.steamLobbyId !== currentLobby.id) {
-                console.log('Persistent Lobby: Steam ID changed, moving to new lobby...', updatedLobby.steamLobbyId)
-                try {
-                    // Use Context method so UI updates
-                    await joinLobby(updatedLobby.steamLobbyId)
-                } catch (e) {
-                    console.error('Failed to auto-join new steam lobby:', e)
+            // Check if the server lobby has a Steam lobby ID
+            if (updatedLobby.steamLobbyId) {
+                // Case 1: We don't have a current lobby (it closed) - join the new one
+                if (!currentLobby) {
+                    console.log('Persistent Lobby: No current lobby, joining new lobby...', updatedLobby.steamLobbyId)
+                    try {
+                        await joinLobby(updatedLobby.steamLobbyId)
+                    } catch (e) {
+                        console.error('Failed to join new steam lobby:', e)
+                    }
+                    return
+                }
+
+                // Case 2: Our lobby is dead (0 members) - join the new one
+                if (currentLobby.members.length === 0) {
+                    console.log('Persistent Lobby: Current lobby is dead, joining new lobby...', updatedLobby.steamLobbyId)
+                    try {
+                        await joinLobby(updatedLobby.steamLobbyId)
+                    } catch (e) {
+                        console.error('Failed to join new steam lobby:', e)
+                    }
+                    return
+                }
+
+                // Case 3: Steam ID changed - move to new lobby
+                if (updatedLobby.steamLobbyId !== currentLobby.id) {
+                    console.log('Persistent Lobby: Steam ID changed, moving to new lobby...', updatedLobby.steamLobbyId)
+                    try {
+                        await joinLobby(updatedLobby.steamLobbyId)
+                    } catch (e) {
+                        console.error('Failed to auto-join new steam lobby:', e)
+                    }
                 }
             }
         }
@@ -244,7 +270,9 @@ const LobbyRoom: React.FC = () => {
     }, [currentLobby, user, createLobby])
 
     const handleLeave = async () => {
+        if (!confirm('Are you sure you want to leave the lobby?')) return
         isLeavingRef.current = true
+        clearLobbyMessages()
         await leaveLobby()
         navigate('/lobbies')
     }
@@ -366,14 +394,25 @@ const LobbyRoom: React.FC = () => {
                 <div className="w-1/3 bg-surface rounded-xl border border-white/5 p-4 flex flex-col">
                     <h2 className="text-xl font-bold text-white mb-4 border-b border-white/10 pb-2">Players</h2>
                     <div className="space-y-2 overflow-y-auto flex-1">
-                        {currentLobby.members.map(player => (
-                            <div key={player.id} className="flex items-center justify-between bg-black/20 p-3 rounded">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-bold text-gray-200">{player.name}</span>
-                                    {player.id === currentLobby.owner && <span className="text-xs bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded">HOST</span>}
+                        {currentLobby.members.map(player => {
+                            // Try to find the real name from server lobby data if available
+                            let displayName = player.name;
+                            if (serverLobby && serverLobby.players) {
+                                const serverPlayer = serverLobby.players.find((p: any) => p.steamId === player.id);
+                                if (serverPlayer && serverPlayer.name && serverPlayer.name !== 'Unknown') {
+                                    displayName = serverPlayer.name;
+                                }
+                            }
+
+                            return (
+                                <div key={player.id} className="flex items-center justify-between bg-black/20 p-3 rounded">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-gray-200">{displayName}</span>
+                                        {player.id === currentLobby.owner && <span className="text-xs bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded">HOST</span>}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 </div>
 
@@ -383,11 +422,11 @@ const LobbyRoom: React.FC = () => {
                         <h2 className="font-bold text-white">Lobby Chat</h2>
                     </div>
 
-                    <div className="flex-1 p-4 overflow-y-auto space-y-2">
-                        {messages.map((msg, i) => (
+                    <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto space-y-2">
+                        {lobbyMessages.map((msg, i) => (
                             <div key={i} className="flex gap-2">
                                 <span className="text-gray-500 text-xs mt-1">[{msg.timestamp}]</span>
-                                <span className="font-bold text-primary">{msg.user}:</span>
+                                <span className="font-bold text-primary">{msg.user || msg.fromName}:</span>
                                 <span className="text-gray-300">{msg.text}</span>
                             </div>
                         ))}

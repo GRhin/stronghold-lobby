@@ -5,7 +5,7 @@ import { io, Socket } from 'socket.io-client'
 // In production (built app), use Render server
 const isDevelopment = import.meta.env.DEV
 const SERVER_URL = isDevelopment
-    ? 'http://localhost:3001'
+    ? 'http://localhost:3000'
     : 'https://stronghold-lobby.onrender.com'
 
 console.log(`Connecting to server: ${SERVER_URL} (${isDevelopment ? 'Development' : 'Production'} mode)`)

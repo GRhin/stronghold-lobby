@@ -18,12 +18,16 @@ export interface Message {
 interface ChatContextType {
     globalMessages: Message[]
     addGlobalMessage: (msg: Message) => void
+    lobbyMessages: Message[]
+    addLobbyMessage: (msg: Message) => void
+    clearLobbyMessages: () => void
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
 
 export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [globalMessages, setGlobalMessages] = useState<Message[]>([])
+    const [lobbyMessages, setLobbyMessages] = useState<Message[]>([])
 
     // Limit to keeping the last 200 messages
     const MAX_MESSAGES = 200
@@ -38,11 +42,26 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         })
     }
 
+    const addLobbyMessage = (msg: Message) => {
+        setLobbyMessages(prev => {
+            const updated = [...prev, msg]
+            if (updated.length > MAX_MESSAGES) {
+                return updated.slice(updated.length - MAX_MESSAGES)
+            }
+            return updated
+        })
+    }
+
+    const clearLobbyMessages = () => {
+        setLobbyMessages([])
+    }
+
     useEffect(() => {
         const handleChatMessage = (msg: Message) => {
-            // Only capture global messages here
             if (msg.channel === 'global') {
                 addGlobalMessage(msg)
+            } else if (msg.channel === 'lobby') {
+                addLobbyMessage(msg)
             }
         }
 
@@ -54,7 +73,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [])
 
     return (
-        <ChatContext.Provider value={{ globalMessages, addGlobalMessage }}>
+        <ChatContext.Provider value={{ globalMessages, addGlobalMessage, lobbyMessages, addLobbyMessage, clearLobbyMessages }}>
             {children}
         </ChatContext.Provider>
     )

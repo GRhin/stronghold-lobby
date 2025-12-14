@@ -5,6 +5,7 @@ import { useLocation } from 'react-router-dom';
 import { socket } from '../socket';
 import { useUser } from '../context/UserContext';
 import { useChat, type Message } from '../context/ChatContext';
+import { useSmartScroll } from '../hooks/useSmartScroll';
 
 // Message interface is now imported from ChatContext
 
@@ -162,6 +163,8 @@ const Chat: React.FC = () => {
             : messages.filter(m => m.channel === 'lobby');
 
     // ----- Render ----------------------------------------------------------
+    const chatContainerRef = useSmartScroll(filteredMessages);
+
     return (
         <div className="flex h-full gap-4">
             {/* ------------------- Sidebar: Channels & Friends ------------------- */}
@@ -211,7 +214,7 @@ const Chat: React.FC = () => {
                 </div>
 
                 {/* Message list */}
-                <div className="flex-1 p-4 overflow-y-auto space-y-4">
+                <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto space-y-4">
                     {filteredMessages.map(msg => (
                         <div key={msg.id} className="flex gap-3">
                             <div className="font-bold text-primary whitespace-nowrap">[{msg.timestamp}] {msg.user ?? 'Unknown'}:</div>
