@@ -38,10 +38,12 @@ export function setupGameHandlers() {
         try {
             // Use spawn with shell: true to avoid EACCES issues on Windows
             // We quote the gamePath to handle spaces safely when using shell: true
+            // IMPORTANT: stdio: 'ignore' is critical for proper detachment on Windows
             const child = spawn(`"${gamePath}"`, argsArray, {
                 cwd,
                 detached: true,
                 shell: true,
+                stdio: 'ignore', // Prevents game window from being blocked by parent process
                 windowsVerbatimArguments: true // Helps with argument parsing on Windows
             })
 
@@ -120,6 +122,7 @@ export function setupGameHandlers() {
                 cwd: installDir || path.dirname(gamePath),
                 detached: true,
                 shell: true,
+                stdio: 'ignore', // Prevents game window from being blocked by parent process
                 windowsVerbatimArguments: true
             })
 
