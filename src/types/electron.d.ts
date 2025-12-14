@@ -13,6 +13,8 @@ export interface ElectronAPI {
     joinLobby: (lobbyId: string) => Promise<{ id: string; owner: string }>
     leaveLobby: () => Promise<void>
     getLobbyMembers: () => Promise<Array<{ id: string; name: string }>>
+    setLobbyData: (key: string, value: string) => Promise<void>
+    removeGameExitedListener: (callback: (code: number) => void) => void
 }
 
 declare global {
