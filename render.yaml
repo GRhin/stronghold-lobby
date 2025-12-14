@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: stronghold-lobby-server
+    env: node
+    region: oregon
+    buildCommand: cd server && npm install
+    startCommand: cd server && npm start
+    envVars:
+      - key: MONGO_URI
+        sync: false
