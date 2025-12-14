@@ -28,3 +28,7 @@ dist-electron
 
 # Release builds (too large for git - use GitHub Releases instead)
 release/
+
+# Environment variables (contains sensitive credentials)
+.env
+server/.env
