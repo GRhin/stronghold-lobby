@@ -22,7 +22,17 @@ contextBridge.exposeInMainWorld('electron', {
     getLobbies: () => ipcRenderer.invoke('steam-get-lobbies'),
     joinLobby: (lobbyId: string) => ipcRenderer.invoke('steam-join-lobby', lobbyId),
     leaveLobby: () => ipcRenderer.invoke('steam-leave-lobby'),
-    getLobbyMembers: () => ipcRenderer.invoke('steam-get-lobby-members')
+    getLobbyMembers: () => ipcRenderer.invoke('steam-get-lobby-members'),
+
+    // UCP
+    ucpReadFile: (path: string) => ipcRenderer.invoke('ucp-read-file', path),
+    ucpReadBinary: (path: string) => ipcRenderer.invoke('ucp-read-binary', path),
+    ucpGetStats: (path: string) => ipcRenderer.invoke('ucp-get-stats', path),
+    ucpZipFolder: (folderPath: string, outputPath?: string) => ipcRenderer.invoke('ucp-zip-folder', folderPath, outputPath),
+    ucpBackupFile: (path: string) => ipcRenderer.invoke('ucp-backup-file', path),
+    ucpRestoreFile: (path: string) => ipcRenderer.invoke('ucp-restore-file', path),
+    ucpWriteFile: (path: string, buffer: ArrayBuffer) => ipcRenderer.invoke('ucp-write-file', path, buffer),
+    ucpUnzip: (zipPath: string, destPath: string) => ipcRenderer.invoke('ucp-unzip', zipPath, destPath)
 })
 
 // Preload script

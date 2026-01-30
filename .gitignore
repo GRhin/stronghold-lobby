@@ -32,3 +32,4 @@ release/
 # Environment variables (contains sensitive credentials)
 .env
 server/.env
+server/uploads/

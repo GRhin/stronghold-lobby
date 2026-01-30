@@ -8,6 +8,9 @@ import { useSteam } from '../context/SteamContext'
 import { useSettings } from '../context/SettingsContext'
 import { useChat } from '../context/ChatContext'
 import { useSmartScroll } from '../hooks/useSmartScroll'
+import { syncUCP, checkDiff, downloadUpdates, restoreBackups } from '../utils/ucp'
+import type { FileDiff } from '../utils/ucp'
+import UCPSyncModal from '../components/UCPSyncModal'
 import { socket } from '../socket'
 
 const LobbyRoom: React.FC = () => {
@@ -272,6 +275,17 @@ const LobbyRoom: React.FC = () => {
     const handleLeave = async () => {
         if (!confirm('Are you sure you want to leave the lobby?')) return
         isLeavingRef.current = true
+
+        // Restore UCP files if we synced
+        if (!isHost) {
+            const gamePath = currentLobby?.gameMode === 'extreme' ? extremePath : crusaderPath
+            if (gamePath) {
+                // We should probably track if we actually synced or not, but trying to restore 
+                // harmlessly if backups exist is safer/easier.
+                restoreBackups(gamePath).catch(err => console.error('Failed to restore UCP:', err))
+            }
+        }
+
         clearLobbyMessages()
         await leaveLobby()
         navigate('/lobbies')
@@ -357,6 +371,82 @@ const LobbyRoom: React.FC = () => {
         setChatInput('')
     }
 
+    const [ucpStatus, setUcpStatus] = useState<string | null>(null)
+
+    // Sync State
+    const [syncDiffs, setSyncDiffs] = useState<FileDiff[]>([])
+    const [showSyncModal, setShowSyncModal] = useState(false)
+    const [isSyncing, setIsSyncing] = useState(false)
+    const [syncStatus, setSyncStatus] = useState<string | null>(null)
+
+    // Check UCP Sync
+    const performSyncCheck = async () => {
+        if (!serverLobby || isHost) return
+        const gamePath = currentLobby?.gameMode === 'extreme' ? extremePath : crusaderPath
+        if (!gamePath) return
+
+        try {
+            const diffs = await checkDiff(serverLobby.id, gamePath)
+            if (diffs.length > 0) {
+                setSyncDiffs(diffs)
+                setShowSyncModal(true)
+            }
+        } catch (err) {
+            console.error('Failed to check UCP sync:', err)
+        }
+    }
+
+    useEffect(() => {
+        if (serverLobby?.id && !isHost) {
+            performSyncCheck()
+        }
+
+        const onUcpUpdate = () => {
+            console.log('Host updated UCP, checking...')
+            performSyncCheck()
+        }
+        socket.on('ucp:updated', onUcpUpdate)
+        return () => { socket.off('ucp:updated', onUcpUpdate) }
+    }, [serverLobby?.id, isHost])
+
+    const handleSyncConfirm = async () => {
+        if (!serverLobby) return
+        setIsSyncing(true)
+        const gamePath = currentLobby?.gameMode === 'extreme' ? extremePath : crusaderPath
+        if (!gamePath) return
+
+        try {
+            await downloadUpdates(serverLobby.id, gamePath, syncDiffs, setSyncStatus)
+            setShowSyncModal(false)
+            // alert('Synced!')
+        } catch (err: any) {
+            alert('Sync failed: ' + err.message)
+        } finally {
+            setIsSyncing(false)
+            setSyncStatus(null)
+        }
+    }
+
+    const handleUploadUCP = async () => {
+        if (!serverLobby) return
+        const gamePath = currentLobby?.gameMode === 'extreme' ? extremePath : crusaderPath
+        if (!gamePath) {
+            alert('Game path not configured!')
+            return
+        }
+
+        try {
+            setUcpStatus('Starting upload...')
+            // Use serverLobby.id (Internal ID)
+            await syncUCP(serverLobby.id, gamePath, setUcpStatus)
+            setUcpStatus(null)
+            alert('UCP Setup Uploaded Successfully!')
+        } catch (err: any) {
+            setUcpStatus('Error: ' + err.message)
+            console.error(err)
+        }
+    }
+
     if (!currentLobby) {
         return (
             <div className="flex flex-col items-center justify-center h-full">
@@ -382,9 +472,14 @@ const LobbyRoom: React.FC = () => {
                 <div className="flex gap-3">
                     <Button variant="secondary" onClick={handleLeave}>Leave Lobby</Button>
                     {isHost && ((
-                        <Button variant="primary" onClick={handleLaunch}>
-                            Launch Game
-                        </Button>
+                        <>
+                            <Button variant="secondary" onClick={handleUploadUCP} disabled={!!ucpStatus}>
+                                {ucpStatus || 'Upload UCP Config'}
+                            </Button>
+                            <Button variant="primary" onClick={handleLaunch}>
+                                Launch Game
+                            </Button>
+                        </>
                     ))}
                 </div>
             </div>
@@ -451,6 +546,15 @@ const LobbyRoom: React.FC = () => {
                 onClose={() => setShowResultModal(false)}
                 lobbyId={serverLobby?.id}
                 players={serverLobby?.players || []}
+            />
+
+            <UCPSyncModal
+                isOpen={showSyncModal}
+                diffs={syncDiffs}
+                onConfirm={handleSyncConfirm}
+                onCancel={() => { setShowSyncModal(false); handleLeave(); }}
+                isLoading={isSyncing}
+                status={syncStatus}
             />
         </div>
     )

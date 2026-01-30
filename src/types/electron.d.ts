@@ -15,6 +15,16 @@ export interface ElectronAPI {
     getLobbyMembers: () => Promise<Array<{ id: string; name: string }>>
     setLobbyData: (key: string, value: string) => Promise<void>
     removeGameExitedListener: (callback: (code: number) => void) => void
+
+    // UCP
+    ucpReadFile: (path: string) => Promise<string>
+    ucpReadBinary: (path: string) => Promise<Uint8Array>
+    ucpGetStats: (path: string) => Promise<{ size: number, mtime: Date } | null>
+    ucpZipFolder: (folderPath: string, outputPath?: string) => Promise<Uint8Array>
+    ucpBackupFile: (path: string) => Promise<boolean>
+    ucpRestoreFile: (path: string) => Promise<boolean>
+    ucpWriteFile: (path: string, buffer: ArrayBuffer) => Promise<boolean>
+    ucpUnzip: (zipPath: string, destPath: string) => Promise<boolean>
 }
 
 declare global {

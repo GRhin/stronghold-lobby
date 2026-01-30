@@ -3,11 +3,13 @@ import path from 'path'
 import { setupGameHandlers, setMainWindow } from './game'
 import { setupDownloaderHandlers } from './downloader'
 import { initSteam, setupSteamHandlers } from './steam'
+import { setupUCPHandlers } from './ucp'
 
 setupGameHandlers()
 setupDownloaderHandlers()
 initSteam()
 setupSteamHandlers()
+setupUCPHandlers()
 
 // The built directory structure
 //

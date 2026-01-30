@@ -12,6 +12,88 @@ const Message = require('./models/Message')
 const app = express()
 app.use(cors())
 
+const multer = require('multer')
+const fs = require('fs-extra')
+const path = require('path')
+
+// Configure Multer for UCP uploads
+const uploadStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const lobbyId = req.params.lobbyId
+        if (!lobbyId) return cb(new Error('No lobby ID provided'))
+        const dir = path.join(__dirname, 'uploads', lobbyId)
+        fs.ensureDirSync(dir)
+        cb(null, dir)
+    },
+    filename: (req, file, cb) => {
+        // Use original name or provided filename in body is irrelevant for diskStorage filename fn usually
+        // We'll trust the original name for now, but in reality we might want structure
+        cb(null, file.originalname)
+    }
+})
+const upload = multer({ storage: uploadStorage })
+
+// ----- UCP Endpoints ------------------------------------------------------
+// 1. Upload File
+app.post('/api/lobby/:lobbyId/upload', upload.single('file'), (req, res) => {
+    // console.log(`File uploaded for lobby ${req.params.lobbyId}:`, req.file.path)
+    if (req.file) {
+        // If it's ucp-config.yml, we might want to parse it to update a manifest,
+        // but for now just storing it is enough. Clients will download it to check.
+
+        // Notify socket?
+        const lobbyId = req.params.lobbyId
+        // Find if this is a valid lobby
+        // We can emit a general "update available" event to the lobby
+        io.to(lobbyId).emit('ucp:updated', {
+            file: req.file.originalname,
+            size: req.file.size,
+            timestamp: Date.now()
+        })
+
+        res.status(200).json({ success: true })
+    } else {
+        res.status(400).json({ success: false, error: 'No file provided' })
+    }
+})
+
+// 2. Get Manifest (List of files)
+app.get('/api/lobby/:lobbyId/manifest', async (req, res) => {
+    try {
+        const lobbyId = req.params.lobbyId
+        const dir = path.join(__dirname, 'uploads', lobbyId)
+        if (!fs.existsSync(dir)) {
+            return res.json({ files: [] })
+        }
+
+        const files = await fs.readdir(dir)
+        const fileData = await Promise.all(files.map(async f => {
+            const stat = await fs.stat(path.join(dir, f))
+            return {
+                name: f,
+                size: stat.size,
+                mtime: stat.mtime
+            }
+        }))
+        res.json({ files: fileData })
+    } catch (err) {
+        res.status(500).json({ error: err.message })
+    }
+})
+
+// 3. Download File
+app.get('/api/lobby/:lobbyId/file/:filename', (req, res) => {
+    const { lobbyId, filename } = req.params
+    const filePath = path.join(__dirname, 'uploads', lobbyId, filename)
+    if (fs.existsSync(filePath)) {
+        res.download(filePath)
+    } else {
+        res.status(404).send('File not found')
+    }
+})
+
+// --------------------------------------------------------------------------
+
 const server = http.createServer(app)
 const io = new Server(server, {
     cors: {
@@ -452,7 +534,10 @@ io.on('connection', (socket) => {
         socket.emit('lobby:joined', lobby)
     })
 
-    socket.on('lobby:leave', () => handleLeaveLobby(socket))
+    socket.on('lobby:leave', () => {
+        console.log('Received lobby:leave from', socket.id)
+        handleLeaveLobby(socket)
+    })
 
     socket.on('lobby:launch', () => {
         const lobby = findLobbyBySocketId(socket.id)
@@ -634,6 +719,15 @@ function handleLeaveLobby(socket) {
     lobby.players = lobby.players.filter(p => p.id !== socket.id)
     socket.leave(lobby.id)
     if (lobby.players.length === 0) {
+        // Cleanup uploads
+        const uploadDir = path.join(__dirname, 'uploads', lobby.id)
+        console.log('Cleaning up lobby:', lobby.id, 'Players:', lobby.players.length, 'Dir:', uploadDir)
+        if (fs.existsSync(uploadDir)) {
+            fs.remove(uploadDir)
+                .then(() => console.log('Cleanup success'))
+                .catch(err => console.error('Failed to cleanup uploads:', err))
+        }
+
         lobbies = lobbies.filter(l => l.id !== lobby.id)
         io.emit('lobby:list', lobbies)
     } else {
