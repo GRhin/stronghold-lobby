@@ -7,6 +7,7 @@ const mongoose = require('mongoose')
 
 const User = require('./models/User')
 const Message = require('./models/Message')
+const fetch = require('node-fetch')
 
 // ----- Server Setup -------------------------------------------------------
 const app = express()
