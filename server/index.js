@@ -74,7 +74,25 @@ async function getGitHubExtensions() {
     try {
         console.log('Fetching GitHub extensions store...')
         const response = await fetch('https://api.github.com/repos/UnofficialCrusaderPatch/UCP3-extensions-store/releases/latest')
+
+        if (!response.ok) {
+            const errorText = await response.text()
+            console.error(`GitHub API error (${response.status}):`, errorText.substring(0, 200))
+            throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`)
+        }
+
         const data = await response.json()
+
+        // Log response structure for debugging
+        console.log('GitHub API response keys:', Object.keys(data))
+        console.log('Assets type:', typeof data.assets, 'Is array:', Array.isArray(data.assets))
+
+        // Validate response structure
+        if (!data || !Array.isArray(data.assets)) {
+            console.error('Invalid GitHub API response. Expected assets array, got:', typeof data.assets)
+            console.error('Response sample:', JSON.stringify(data).substring(0, 500))
+            throw new Error('GitHub API response missing assets array')
+        }
 
         // Update cache
         githubExtensionsCache.extensions.clear()
