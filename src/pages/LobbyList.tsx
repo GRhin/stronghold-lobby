@@ -162,7 +162,7 @@ const LobbyList: React.FC = () => {
 
                             <h3 className="text-xl font-bold text-primary mb-1 group-hover:text-white transition-colors">{lobby.name}</h3>
                             <p className="text-sm text-gray-400 mb-4">
-                                ID: <span className="text-white">{lobby.id}</span>
+                                Host: <span className="text-white">{lobby.ownerName || 'Unknown'}</span>
                             </p>
 
                             <div className="space-y-2 mb-6">

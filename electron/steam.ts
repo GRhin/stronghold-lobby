@@ -107,9 +107,15 @@ export function setupSteamHandlers() {
                 const hasGameServer = data.__gameserverSteamID && data.__gameserverSteamID !== '0'
                 const isInGame = hasGameServer || l.getData('status') === 'In Game'
 
+                // Get owner info
+                const owner = l.getOwner()
+                const ownerId = owner.steamId64.toString()
+                const ownerName = owner.getName() || ownerId
 
                 return {
                     id: l.id.toString(),
+                    owner: ownerId,
+                    ownerName: ownerName,
                     memberCount: l.getMemberCount(),
                     maxMembers: l.getMemberLimit(),
                     name: l.getData('name') || 'Unnamed Lobby',
