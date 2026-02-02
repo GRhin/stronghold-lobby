@@ -42,7 +42,7 @@ export const getUCPConfig = async (inputPath: string): Promise<UCPConfig | null>
     }
 }
 
-const UPLOAD_CHUNK_SIZE = 50 * 1024 * 1024 // 50MB
+const UPLOAD_CHUNK_SIZE = 25 * 1024 * 1024 // 25MB (safer for proxy limits)
 
 export const uploadFile = async (lobbyId: string, blob: Blob, filename: string) => {
     // If file is large, use chunked upload
@@ -88,6 +88,7 @@ export const uploadFile = async (lobbyId: string, blob: Blob, filename: string) 
     }
 }
 
+
 export const syncUCP = async (
     lobbyId: string,
     inputPath: string,
@@ -98,25 +99,33 @@ export const syncUCP = async (
     const config = await getUCPConfig(gamePath)
     if (!config) throw new Error('Could not read ucp-config.yml')
 
-    // 1. Upload Config
-    onProgress('Uploading Config...')
+    // Fetch GitHub extensions cache
+    onProgress('Checking GitHub extensions store...')
+    let githubExtensions: Map<string, any> = new Map()
+    try {
+        const response = await fetch(`${CACHED_SERVER_URL}/api/github_extensions`)
+        const data = await response.json()
+        if (data.success) {
+            githubExtensions = new Map(data.extensions.map((ext: any) => [ext.name, ext]))
+            console.log(`Found ${githubExtensions.size} extensions on GitHub`)
+        }
+    } catch (err) {
+        console.warn('Failed to fetch GitHub extensions, will upload all files:', err)
+    }
+
+    // Upload ucp-config.yml
+    onProgress('Uploading Configuration...')
     const configContent = await window.electron.ucpReadFile(gamePath + '\\ucp-config.yml')
     const configBlob = new Blob([configContent], { type: 'text/yaml' })
     await uploadFile(lobbyId, configBlob, 'ucp-config.yml')
 
-    // 2. Upload Core DLLs
-    onProgress('Checking Core DLLs...')
+    // Upload Core DLLs
+    onProgress('Uploading Core DLLs...')
     for (const dll of CORE_DLLS) {
-        // Read binary
         try {
-            // We assume ucpReadBinary returns an ArrayBuffer or similar?
-            // Wait, ipcRenderer passing buffer?
-            // In main.ts: fs.promises.readFile returns Buffer. 
-            // Electron IPC sends Buffer as Uint7Array/Buffer.
             const buffer = await window.electron.ucpReadBinary(gamePath + '\\' + dll)
             if (buffer) {
                 const blob = new Blob([buffer as any])
-                onProgress(`Uploading ${dll}...`)
                 await uploadFile(lobbyId, blob, dll)
             }
         } catch (e) {
@@ -124,66 +133,80 @@ export const syncUCP = async (
         }
     }
 
-    // 3. Upload Modules
-    // Location: gamePath/ucp/modules/<name>-<version>.zip
-    // Logic: Look at load-order to find version
-    // 3. Upload Modules
-    // Location: gamePath/ucp/modules/<name>-<version>.zip
-    // Logic: Look at load-order to find version
+    // Process load-order for modules and plugins
     const loadOrder = config['config-full']?.['load-order']
-    if (loadOrder) {
-        console.log(`Found ${loadOrder.length} items in load-order`)
-        for (const item of loadOrder) {
-            const ext = item.extension
-            const ver = item.version
+    if (!loadOrder || loadOrder.length === 0) {
+        console.log('No modules/plugins in load-order')
+        onProgress('Done!')
+        return
+    }
 
-            // Check if it is a module (usually in config-full.modules)
-            // But some might be plugins.
-            // The request says: "config-full -> modules will have a list... modules to upload from ucp/modules"
-            // "config-full -> plugins ... upload ucp/plugins/<name>-<version> (folder)"
+    onProgress(`Processing ${loadOrder.length} extensions...`)
 
-            const isModule = config['config-full']?.modules && config['config-full'].modules[ext]
-            const isPlugin = config['config-full']?.plugins && config['config-full'].plugins[ext]
+    // Track what we upload vs skip
+    const skipped: string[] = []
+    const uploaded: string[] = []
 
-            if (isModule) {
-                const zipName = `${ext}-${ver}.zip`
-                const sigName = `${ext}-${ver}.zip.sig`
+    for (const item of loadOrder) {
+        const ext = item.extension
+        const ver = item.version
+        const zipName = `${ext}-${ver}.zip`
 
-                // Try upload zip
+        // Check if available on GitHub
+        if (githubExtensions.has(zipName)) {
+            const githubInfo = githubExtensions.get(zipName)
+            console.log(`Skipping ${zipName} (available on GitHub, ${(githubInfo.size / 1024 / 1024).toFixed(2)}MB)`)
+            skipped.push(zipName)
+            continue
+        }
+
+        // Not on GitHub - need to upload
+        const isModule = config['config-full']?.modules && config['config-full'].modules[ext]
+        const isPlugin = config['config-full']?.plugins && config['config-full'].plugins[ext]
+
+        if (isModule) {
+            const sigName = `${ext}-${ver}.zip.sig`
+            try {
+                console.log(`Uploading module ${zipName}`)
+                const buf = await window.electron.ucpReadBinary(`${gamePath}\\ucp\\modules\\${zipName}`)
+                onProgress(`Uploading module ${zipName}...`)
+                await uploadFile(lobbyId, new Blob([buf as any]), zipName)
+                uploaded.push(zipName)
+
+                // Try upload sig
                 try {
-                    console.log(`Uploading module ${zipName}`)
-                    const buf = await window.electron.ucpReadBinary(`${gamePath}\\ucp\\modules\\${zipName}`)
-                    onProgress(`Uploading module ${zipName}...`)
-                    await uploadFile(lobbyId, new Blob([buf as any]), zipName)
-
-                    // Try upload sig
                     const sigBuf = await window.electron.ucpReadBinary(`${gamePath}\\ucp\\modules\\${sigName}`)
                     await uploadFile(lobbyId, new Blob([sigBuf as any]), sigName)
-                } catch (e) {
-                    console.warn(`Module file missing: ${zipName}`, e)
+                } catch {
+                    console.log(`No signature for ${zipName}`)
                 }
-            } else if (isPlugin) {
-                // Zip the folder
-                const pluginFolder = `${ext}-${ver}`
-                const fullPath = `${gamePath}\\ucp\\plugins\\${pluginFolder}`
+            } catch (e) {
+                console.warn(`Module file missing: ${zipName}`, e)
+            }
+        } else if (isPlugin) {
+            const pluginFolder = `${ext}-${ver}`
+            const fullPath = `${gamePath}\\ucp\\plugins\\${pluginFolder}`
 
-                onProgress(`Zipping plugin ${pluginFolder}...`)
-                // window.electron.ucpZipFolder returns path to zip or buffer?
-                // My implementation: if outputPath not provided, returns buffer.
-                // Wait, ipcMain returns buffer, but over IPC it will be Uint8Array
-                console.log(`Zipping plugin ${pluginFolder} at ${fullPath}`)
+            onProgress(`Zipping plugin ${pluginFolder}...`)
+            console.log(`Zipping plugin ${pluginFolder} at ${fullPath}`)
+
+            try {
                 const zipBuf = await window.electron.ucpZipFolder(fullPath)
-
                 if (zipBuf) {
                     onProgress(`Uploading plugin ${pluginFolder}...`)
-                    await uploadFile(lobbyId, new Blob([zipBuf as any]), `${pluginFolder}.zip`)
+                    await uploadFile(lobbyId, new Blob([zipBuf as any]), zipName)
+                    uploaded.push(zipName)
                 }
+            } catch (e) {
+                console.warn(`Plugin folder missing: ${pluginFolder}`, e)
             }
         }
     }
 
+    console.log(`Upload complete: ${uploaded.length} uploaded, ${skipped.length} skipped (on GitHub)`)
     onProgress('Done!')
 }
+
 
 export interface FileDiff {
     file: string

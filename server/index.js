@@ -33,6 +33,100 @@ const uploadStorage = multer.diskStorage({
 })
 const upload = multer({ storage: uploadStorage })
 
+// ----- GitHub Extensions Store Cache --------------------------------------
+// Cache for GitHub extensions to avoid redundant API calls
+let githubExtensionsCache = {
+    lastFetched: null,
+    extensions: new Map(), // filename -> { version, downloadUrl, size }
+    maxAge: 1000 * 60 * 60 // 1 hour cache
+}
+
+// Extract version from filename (e.g., "module-1.2.3.zip" -> "1.2.3")
+function extractVersion(filename) {
+    const match = filename.match(/-(\d+\.\d+\.\d+)\.zip$/)
+    return match ? match[1] : null
+}
+
+// Compare semantic versions (returns -1, 0, or 1)
+function compareVersions(v1, v2) {
+    if (!v1 || !v2) return 0
+    const parts1 = v1.split('.').map(Number)
+    const parts2 = v2.split('.').map(Number)
+    for (let i = 0; i < 3; i++) {
+        if (parts1[i] > parts2[i]) return 1
+        if (parts1[i] < parts2[i]) return -1
+    }
+    return 0
+}
+
+// Fetch GitHub extensions (with caching)
+async function getGitHubExtensions() {
+    const now = Date.now()
+
+    // Return cache if fresh
+    if (githubExtensionsCache.lastFetched &&
+        (now - githubExtensionsCache.lastFetched) < githubExtensionsCache.maxAge) {
+        console.log('Using cached GitHub extensions')
+        return githubExtensionsCache.extensions
+    }
+
+    try {
+        console.log('Fetching GitHub extensions store...')
+        const response = await fetch('https://api.github.com/repos/UnofficialCrusaderPatch/UCP3-extensions-store/releases/latest')
+        const data = await response.json()
+
+        // Update cache
+        githubExtensionsCache.extensions.clear()
+        for (const asset of data.assets) {
+            githubExtensionsCache.extensions.set(asset.name, {
+                version: extractVersion(asset.name),
+                downloadUrl: asset.browser_download_url,
+                size: asset.size
+            })
+        }
+        githubExtensionsCache.lastFetched = now
+        console.log(`Cached ${githubExtensionsCache.extensions.size} extensions from GitHub`)
+
+        return githubExtensionsCache.extensions
+    } catch (err) {
+        console.error('Failed to fetch GitHub extensions:', err)
+        // Return stale cache if available
+        if (githubExtensionsCache.extensions.size > 0) {
+            console.log('Using stale cache due to fetch error')
+            return githubExtensionsCache.extensions
+        }
+        throw err
+    }
+}
+
+// Check if module is available on GitHub
+function isAvailableOnGitHub(filename, requestedVersion = null) {
+    const cached = githubExtensionsCache.extensions.get(filename)
+    if (!cached) return false
+
+    // If version specified, check if GitHub version is >= requested
+    if (requestedVersion) {
+        return compareVersions(cached.version, requestedVersion) >= 0
+    }
+
+    return true
+}
+
+// Force refresh cache if requested module is not found
+async function ensureModuleInCache(filename, requestedVersion = null) {
+    // Check current cache
+    if (isAvailableOnGitHub(filename, requestedVersion)) {
+        return true
+    }
+
+    // Not in cache or version too old - refresh
+    console.log(`Module ${filename} not in cache or version mismatch, refreshing...`)
+    githubExtensionsCache.lastFetched = null // Force refresh
+    await getGitHubExtensions()
+
+    return isAvailableOnGitHub(filename, requestedVersion)
+}
+
 // ----- UCP Endpoints ------------------------------------------------------
 // 1a. Upload File Chunk (for large files)
 app.post('/api/lobby/:lobbyId/upload_chunk', upload.single('chunk'), async (req, res) => {
@@ -150,6 +244,44 @@ app.get('/api/lobby/:lobbyId/file/:filename', (req, res) => {
         res.download(filePath)
     } else {
         res.status(404).send('File not found')
+    }
+})
+
+// 3. Get GitHub Extensions Cache
+app.get('/api/github_extensions', async (req, res) => {
+    try {
+        const extensions = await getGitHubExtensions()
+        res.json({
+            success: true,
+            extensions: Array.from(extensions.entries()).map(([name, info]) => ({
+                name,
+                ...info
+            })),
+            cachedAt: githubExtensionsCache.lastFetched
+        })
+    } catch (err) {
+        console.error('Error fetching GitHub extensions:', err)
+        res.status(500).json({ success: false, error: err.message })
+    }
+})
+
+// 4. Check if module is available on GitHub
+app.get('/api/github_extensions/check/:filename', async (req, res) => {
+    try {
+        const { filename } = req.params
+        const { version } = req.query
+
+        const available = await ensureModuleInCache(filename, version)
+        const info = githubExtensionsCache.extensions.get(filename)
+
+        res.json({
+            success: true,
+            available,
+            info: info || null
+        })
+    } catch (err) {
+        console.error('Error checking module:', err)
+        res.status(500).json({ success: false, error: err.message })
     }
 })
 
