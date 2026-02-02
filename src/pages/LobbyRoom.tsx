@@ -593,6 +593,13 @@ const LobbyRoom: React.FC = () => {
                 isLoading={isSyncing}
                 status={syncStatus}
             />
+
+            {/* UCP Modules Modal */}
+            <UCPModulesModal
+                isOpen={showModulesModal}
+                onClose={() => setShowModulesModal(false)}
+                modules={ucpModules}
+            />
         </div>
     )
 }
