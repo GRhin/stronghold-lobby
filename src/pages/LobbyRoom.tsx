@@ -34,6 +34,7 @@ const LobbyRoom: React.FC = () => {
     const [launchStatus, setLaunchStatus] = useState<string | null>(null)
     const [serverLobby, setServerLobby] = useState<any>(null)
     const [showResultModal, setShowResultModal] = useState(false)
+    const [hasCustomMod, setHasCustomMod] = useState(false)
 
     const isHost = currentLobby && user ? currentLobby.owner === user.steamId : false
     const pendingLobbyIdRef = React.useRef<string | null>(null)
@@ -403,6 +404,7 @@ const LobbyRoom: React.FC = () => {
 
         const onUcpUpdate = () => {
             console.log('Host updated UCP, checking...')
+            setHasCustomMod(true) // Mark that custom mods are present
             performSyncCheck()
         }
         socket.on('ucp:updated', onUcpUpdate)
@@ -461,7 +463,14 @@ const LobbyRoom: React.FC = () => {
             {/* Header */}
             <div className="flex justify-between items-center bg-surface p-6 rounded-xl border border-white/5">
                 <div>
-                    <h1 className="text-3xl font-bold text-white mb-1">{currentLobby.name}</h1>
+                    <h1 className="text-3xl font-bold text-white mb-1">
+                        {currentLobby.name}
+                        {hasCustomMod && (
+                            <span className="ml-3 text-sm px-3 py-1 bg-purple-500/20 text-purple-400 border border-purple-500/50 rounded-lg font-bold">
+                                🎮 Custom Mod
+                            </span>
+                        )}
+                    </h1>
                     <p className="text-gray-400">Lobby ID: <span className="text-white">{currentLobby.id}</span></p>
                     {launchStatus && (
                         <div className="mt-2 px-3 py-1 bg-primary/20 text-primary rounded inline-block text-sm font-bold">
