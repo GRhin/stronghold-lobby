@@ -73,7 +73,17 @@ async function getGitHubExtensions() {
 
     try {
         console.log('Fetching GitHub extensions store...')
-        const response = await fetch('https://api.github.com/repos/UnofficialCrusaderPatch/UCP3-extensions-store/releases/latest')
+
+        // Prepare headers with optional GitHub token for higher rate limits
+        const headers = {}
+        if (process.env.GITHUB_TOKEN) {
+            headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`
+            console.log('Using authenticated GitHub API (5000 req/hour)')
+        } else {
+            console.log('Using unauthenticated GitHub API (60 req/hour - may be rate limited)')
+        }
+
+        const response = await fetch('https://api.github.com/repos/UnofficialCrusaderPatch/UCP3-extensions-store/releases/latest', { headers })
 
         if (!response.ok) {
             const errorText = await response.text()
