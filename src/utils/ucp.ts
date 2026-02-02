@@ -105,12 +105,16 @@ export const syncUCP = async (
     try {
         const response = await fetch(`${CACHED_SERVER_URL}/api/github_extensions`)
         const data = await response.json()
-        if (data.success) {
+        if (data.success && data.extensions) {
             githubExtensions = new Map(data.extensions.map((ext: any) => [ext.name, ext]))
-            console.log(`Found ${githubExtensions.size} extensions on GitHub`)
+            console.log(`Found ${githubExtensions.size} extensions on GitHub - will skip uploading these`)
+        } else {
+            console.warn('GitHub extensions cache unavailable:', data.error || 'Unknown error')
+            console.log('Will upload all files (GitHub cache not available)')
         }
     } catch (err) {
-        console.warn('Failed to fetch GitHub extensions, will upload all files:', err)
+        console.warn('Failed to fetch GitHub extensions cache:', err)
+        console.log('Will upload all files (fallback mode)')
     }
 
     // Upload ucp-config.yml
