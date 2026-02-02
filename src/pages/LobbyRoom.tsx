@@ -9,8 +9,9 @@ import { useSettings } from '../context/SettingsContext'
 import { useChat } from '../context/ChatContext'
 import { useSmartScroll } from '../hooks/useSmartScroll'
 import { syncUCP, checkDiff, downloadUpdates, restoreBackups } from '../utils/ucp'
-import type { FileDiff } from '../utils/ucp'
+import type { FileDiff, UCPConfig } from '../utils/ucp'
 import UCPSyncModal from '../components/UCPSyncModal'
+import UCPModulesModal from '../components/UCPModulesModal'
 import { socket } from '../socket'
 
 const LobbyRoom: React.FC = () => {
@@ -35,6 +36,8 @@ const LobbyRoom: React.FC = () => {
     const [serverLobby, setServerLobby] = useState<any>(null)
     const [showResultModal, setShowResultModal] = useState(false)
     const [hasCustomMod, setHasCustomMod] = useState(false)
+    const [ucpModules, setUcpModules] = useState<Array<{ name: string, version: string, type: 'module' | 'plugin', size?: number }>>([])
+    const [showModulesModal, setShowModulesModal] = useState(false)
 
     const isHost = currentLobby && user ? currentLobby.owner === user.steamId : false
     const pendingLobbyIdRef = React.useRef<string | null>(null)
@@ -402,9 +405,31 @@ const LobbyRoom: React.FC = () => {
             performSyncCheck()
         }
 
-        const onUcpUpdate = () => {
+        const onUcpUpdate = async () => {
             console.log('Host updated UCP, checking...')
             setHasCustomMod(true) // Mark that custom mods are present
+
+            // Fetch UCP config to get modules list
+            if (serverLobby?.id) {
+                try {
+                    const response = await fetch(`${import.meta.env.DEV ? 'http://localhost:3000' : 'https://stronghold-lobby.onrender.com'}/api/lobby/${serverLobby.id}/file/ucp-config.yml`)
+                    if (response.ok) {
+                        const configText = await response.text()
+                        const yaml = await import('js-yaml')
+                        const config = yaml.load(configText) as UCPConfig
+                        const loadOrder = config['config-full']?.['load-order'] || []
+                        const modules = loadOrder.map(item => ({
+                            name: item.extension,
+                            version: item.version,
+                            type: (config['config-full']?.modules?.[item.extension] ? 'module' : 'plugin') as 'module' | 'plugin'
+                        }))
+                        setUcpModules(modules)
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch UCP config:', err)
+                }
+            }
+
             performSyncCheck()
         }
         socket.on('ucp:updated', onUcpUpdate)
@@ -466,9 +491,12 @@ const LobbyRoom: React.FC = () => {
                     <h1 className="text-3xl font-bold text-white mb-1">
                         {currentLobby.name}
                         {hasCustomMod && (
-                            <span className="ml-3 text-sm px-3 py-1 bg-purple-500/20 text-purple-400 border border-purple-500/50 rounded-lg font-bold">
-                                🎮 Custom Mod
-                            </span>
+                            <button
+                                onClick={() => setShowModulesModal(true)}
+                                className="ml-3 text-sm px-3 py-1 bg-purple-500/20 text-purple-400 border border-purple-500/50 rounded-lg font-bold hover:bg-purple-500/30 hover:border-purple-500 transition-colors cursor-pointer"
+                            >
+                                🎮 Custom Mod ({ucpModules.length})
+                            </button>
                         )}
                     </h1>
                     <p className="text-gray-400">Lobby ID: <span className="text-white">{currentLobby.id}</span></p>
