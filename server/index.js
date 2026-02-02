@@ -34,7 +34,68 @@ const uploadStorage = multer.diskStorage({
 const upload = multer({ storage: uploadStorage })
 
 // ----- UCP Endpoints ------------------------------------------------------
-// 1. Upload File
+// 1a. Upload File Chunk (for large files)
+app.post('/api/lobby/:lobbyId/upload_chunk', upload.single('chunk'), async (req, res) => {
+    try {
+        const lobbyId = req.params.lobbyId
+        const { filename, chunkIndex, totalChunks } = req.body
+
+        if (!req.file || !filename || chunkIndex === undefined) {
+            return res.status(400).json({ success: false, error: 'Missing chunk data' })
+        }
+
+        const targetDir = path.join(__dirname, 'uploads', lobbyId)
+        fs.ensureDirSync(targetDir)
+        const targetPath = path.join(targetDir, filename)
+
+        // If first chunk, ensure we start fresh (or could be resume logic, but simple overwrite for now)
+        if (parseInt(chunkIndex) === 0) {
+            if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath)
+        }
+
+        // Append chunk to target file
+        // Multer saved chunk to req.file.path (if configured to use dest, or we need to check config)
+        // Our 'upload' middleware uses 'uploadStorage' which saves to 'uploads/lobbyId/originalName'
+        // This is problematic for chunks if we use the same middleware configuration because it might overwrite the main file.
+        // We really want a temporary storage for chunks.
+
+        // WORKAROUND: Read the chunk file Multer created, append to target, delete chunk file.
+        // BUT our 'uploadStorage' forces the filename to be `file.originalname`.
+        // If we send `file` with name `blob`, it saves as `blob`.
+        // Better: Read content from req.file.path, append, delete req.file.path.
+
+        const chunkPath = req.file.path
+        const chunkBuffer = await fs.readFile(chunkPath)
+        await fs.appendFile(targetPath, chunkBuffer)
+
+        // Since our multer config forces destination to be the final folder and filename to be 'originalname',
+        // We might simply send the chunk with a unique name like 'filename.part' ??
+        // Actually, let's fix the middleware usage or assume the 'chunk' has a temp name.
+
+        // With current `upload` middleware:
+        // it saves to `uploads/lobbyId/chunkName`.
+        // We should send the chunk with a unique blob name so it doesn't conflict.
+
+        await fs.unlink(chunkPath) // Cleanup the chunk file
+
+        // If last chunk, verify?
+        if (parseInt(chunkIndex) === parseInt(totalChunks) - 1) {
+            console.log(`Finished uploading ${filename} via chunks`)
+            io.to(lobbyId).emit('ucp:updated', {
+                file: filename,
+                size: (await fs.stat(targetPath)).size,
+                timestamp: Date.now()
+            })
+        }
+
+        res.json({ success: true })
+    } catch (err) {
+        console.error('Chunk upload error:', err)
+        res.status(500).json({ success: false, error: err.message })
+    }
+})
+
+// 1. Upload File (Legacy/Small)
 app.post('/api/lobby/:lobbyId/upload', upload.single('file'), (req, res) => {
     // console.log(`File uploaded for lobby ${req.params.lobbyId}:`, req.file.path)
     if (req.file) {

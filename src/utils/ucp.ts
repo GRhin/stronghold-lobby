@@ -42,22 +42,50 @@ export const getUCPConfig = async (inputPath: string): Promise<UCPConfig | null>
     }
 }
 
-export const uploadFile = async (lobbyId: string, file: File | Blob, filename: string) => {
-    const formData = new FormData()
-    formData.append('file', file, filename)
+const UPLOAD_CHUNK_SIZE = 50 * 1024 * 1024 // 50MB
 
-    // In production we might need a dynamic URL.
-    // For now hardcode or use relative if we had a proxy? No, Electron.
-    // We'll rely on the existing socket URL logic or just hardcode for MVP.
-    const response = await fetch(`${CACHED_SERVER_URL}/api/lobby/${lobbyId}/upload`, {
-        method: 'POST',
-        body: formData
-    })
+export const uploadFile = async (lobbyId: string, blob: Blob, filename: string) => {
+    // If file is large, use chunked upload
+    if (blob.size > UPLOAD_CHUNK_SIZE) {
+        const totalChunks = Math.ceil(blob.size / UPLOAD_CHUNK_SIZE)
+        console.log(`File ${filename} is too large (${(blob.size / 1024 / 1024).toFixed(2)}MB). Uploading in ${totalChunks} chunks.`)
 
-    if (!response.ok) {
-        throw new Error(`Upload failed: ${response.status} ${response.statusText}`)
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * UPLOAD_CHUNK_SIZE
+            const end = Math.min(start + UPLOAD_CHUNK_SIZE, blob.size)
+            const chunk = blob.slice(start, end)
+
+            const formData = new FormData()
+            formData.append('chunk', chunk, `chunk-${i}`) // Multer uses this name for temp file
+            formData.append('filename', filename)
+            formData.append('chunkIndex', i.toString())
+            formData.append('totalChunks', totalChunks.toString())
+
+            const response = await fetch(`${CACHED_SERVER_URL}/api/lobby/${lobbyId}/upload_chunk`, {
+                method: 'POST',
+                body: formData
+            })
+
+            if (!response.ok) {
+                throw new Error(`Chunk ${i}/${totalChunks} upload failed: ${response.status} ${response.statusText}`)
+            }
+            console.log(`Uploaded chunk ${i + 1}/${totalChunks} for ${filename}`)
+        }
+        return { success: true }
+    } else {
+        const formData = new FormData()
+        formData.append('file', blob, filename)
+
+        const response = await fetch(`${CACHED_SERVER_URL}/api/lobby/${lobbyId}/upload`, {
+            method: 'POST',
+            body: formData
+        })
+
+        if (!response.ok) {
+            throw new Error(`Upload failed: ${response.status} ${response.statusText}`)
+        }
+        return response.json()
     }
-    return response.json()
 }
 
 export const syncUCP = async (
