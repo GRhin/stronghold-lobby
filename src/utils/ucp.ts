@@ -223,11 +223,14 @@ export const checkDiff = async (lobbyId: string, inputPath: string): Promise<Fil
     const gamePath = getGameDir(inputPath)
     // 1. Get Server Manifest
     const res = await fetch(`${CACHED_SERVER_URL}/api/lobby/${lobbyId}/manifest`)
-    if (!res.ok) return []
+    if (!res.ok) {
+        console.error(`Failed to fetch manifest: ${res.status}`)
+        return []
+    }
     const data = await res.json()
-    const serverFiles: Array<{ name: string, size: number }> = data.files
+    const serverFiles: Array<{ name: string, size: number }> = data.files || []
 
-    if (!serverFiles || serverFiles.length === 0) return []
+    console.log(`Checking differences for lobby ${lobbyId}. Server manifest has ${serverFiles.length} files.`)
 
     const diffs: FileDiff[] = []
 
@@ -282,7 +285,36 @@ export const checkDiff = async (lobbyId: string, inputPath: string): Promise<Fil
             }
 
             if (configDifferent || !localConfig) {
+                console.log('Config mismatch detected')
                 diffs.push({ file: configName, reason: 'version_mismatch', type: 'config' })
+            }
+
+            // 2.5 Check for modules/plugins that might be missing locally even if not in manifest
+            // (Files skipped during optimization are not in manifest but still needed)
+            if (remoteLoadOrder) {
+                for (const item of remoteLoadOrder) {
+                    const isModule = !!remoteConfig['config-full']?.modules?.[item.extension]
+                    const type = isModule ? 'module' : 'plugin'
+                    const fileName = isModule ? `${item.extension}-${item.version}.zip` : `${item.extension}-${item.version}.zip` // both are zipped as name-ver.zip
+
+                    let localPath = ''
+                    if (isModule) {
+                        localPath = `${gamePath}\\ucp\\modules\\${fileName}`
+                    } else {
+                        // For plugins, check folder existence
+                        localPath = `${gamePath}\\ucp\\plugins\\${item.extension}-${item.version}`
+                    }
+
+                    const exists = await window.electron.ucpGetStats(localPath)
+                    if (!exists) {
+                        // Check if it's already in manifest (if so, we'll catch it in step 3)
+                        const inManifest = serverFiles.find(f => f.name === fileName)
+                        if (!inManifest) {
+                            console.log(`Missing optimized file detected: ${fileName}`)
+                            diffs.push({ file: fileName, reason: 'missing', type: 'module' })
+                        }
+                    }
+                }
             }
         }
     }

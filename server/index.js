@@ -269,11 +269,20 @@ app.get('/api/lobby/:lobbyId/manifest', async (req, res) => {
 app.get('/api/lobby/:lobbyId/file/:filename', (req, res) => {
     const { lobbyId, filename } = req.params
     const filePath = path.join(__dirname, 'uploads', lobbyId, filename)
+
     if (fs.existsSync(filePath)) {
-        res.download(filePath)
-    } else {
-        res.status(404).send('File not found')
+        return res.download(filePath)
     }
+
+    // Check if it's an optimized file available on GitHub
+    const extensionInfo = githubExtensionsCache.extensions.get(filename)
+    if (extensionInfo && extensionInfo.downloadUrl) {
+        console.log(`Redirecting download for ${filename} to GitHub: ${extensionInfo.downloadUrl}`)
+        return res.redirect(extensionInfo.downloadUrl)
+    }
+
+    console.warn(`File not found: ${filename} for lobby ${lobbyId}`)
+    res.status(404).send('File not found')
 })
 
 // 3. Get GitHub Extensions Cache
