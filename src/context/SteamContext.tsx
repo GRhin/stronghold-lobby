@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import { socket } from '../socket'
+import { useUser } from './UserContext'
 
 interface SteamLobby {
     id: string
@@ -24,6 +25,7 @@ const SteamContext = createContext<SteamContextType | undefined>(undefined)
 export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [currentLobby, setCurrentLobby] = useState<SteamLobby | null>(null)
     const [lobbies, setLobbies] = useState<Array<{ id: string; owner: string; ownerName: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme' }>>([])
+    const { user } = useUser()
 
     const refreshLobbyMembers = useCallback(async () => {
         if (!currentLobby) return
@@ -118,12 +120,31 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const refreshLobbies = useCallback(async () => {
         try {
-            const list = await window.electron.getLobbies()
-            setLobbies(list as any)
+            const list = await window.electron.getLobbies() as any[]
+
+            // If we are in a lobby and it's not in the list, manually add it so the host can see it
+            if (currentLobby && !list.find(l => l.id === currentLobby.id)) {
+                // Get owner name from members or current user
+                const ownerMember = currentLobby.members.find(m => m.id === currentLobby.owner)
+                const ownerName = ownerMember ? ownerMember.name : (user?.name || 'You')
+
+                list.push({
+                    id: currentLobby.id,
+                    owner: currentLobby.owner,
+                    ownerName: ownerName,
+                    memberCount: currentLobby.members.length,
+                    maxMembers: 8,
+                    name: currentLobby.name,
+                    gameMode: currentLobby.gameMode,
+                    isInGame: false
+                })
+            }
+
+            setLobbies(list)
         } catch (err) {
             console.error('Failed to get lobbies:', err)
         }
-    }, [])
+    }, [currentLobby, user?.name])
 
     // Poll for members if in a lobby
     useEffect(() => {
