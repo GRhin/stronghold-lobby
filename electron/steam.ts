@@ -145,19 +145,19 @@ export function setupSteamHandlers() {
         if (!client) return []
         try {
             const lobbies = await client.matchmaking.getLobbies()
+            console.log(`fetching lobbies... found ${lobbies.length}`)
 
-            return lobbies.map((l: any) => {
+            return lobbies.map((l: any, index: number) => {
                 try {
-                    // Check if lobby has a game server associated (indicates in-game)
-                    // UCP lobbies and our lobbies that have launched will have __gameserverSteamID set
                     const data = l.getFullData()
                     const hasGameServer = data.__gameserverSteamID && data.__gameserverSteamID !== '0'
                     const isInGame = hasGameServer || l.getData('status') === 'In Game'
 
-                    // Get owner info
                     const owner = l.getOwner()
                     const ownerId = owner ? owner.steamId64.toString() : 'Unknown'
                     const ownerName = owner ? (owner.getName() || ownerId) : 'Unknown'
+
+                    console.log(`Lobby ${index}: ${l.id.toString()}, Owner: ${ownerName} (${ownerId}), Name: ${l.getData('name')}`)
 
                     return {
                         id: l.id.toString(),
@@ -170,7 +170,7 @@ export function setupSteamHandlers() {
                         isInGame
                     }
                 } catch (err) {
-                    console.error('Error mapping individual lobby:', err)
+                    console.error(`Error mapping individual lobby ${index}:`, err)
                     return null
                 }
             }).filter((l: any) => l !== null)
