@@ -16,6 +16,36 @@ export function initSteam() {
 }
 
 export function setupSteamHandlers() {
+    if (client && client.matchmaking) {
+        // Listen for internal lobby joins (including via Steam UI)
+        client.matchmaking.on('lobby-join', (lobby: any) => {
+            console.log('Detected external lobby join via Steam UI:', lobby.id.toString())
+            currentLobby = lobby
+
+            // Notify frontend
+            const windows = BrowserWindow.getAllWindows()
+            if (windows.length > 0) {
+                windows[0].webContents.send('steam-lobby-external-join', {
+                    id: lobby.id.toString(),
+                    owner: lobby.getOwner().steamId64.toString()
+                })
+            }
+        })
+    }
+
+    if (client && client.friends) {
+        // Listen for join requests from friends list
+        client.friends.on('game-lobby-join-requested', (lobbyId: any) => {
+            console.log('Join requested via Steam Friends list for lobby:', lobbyId.toString())
+            // Notify frontend so it can call joinLobby or navigate
+            const windows = BrowserWindow.getAllWindows()
+            if (windows.length > 0) {
+                windows[0].webContents.send('steam-lobby-join-requested', {
+                    lobbyId: lobbyId.toString()
+                })
+            }
+        })
+    }
     ipcMain.handle('get-steam-user', () => {
         if (!client) return null
         return {
@@ -101,28 +131,33 @@ export function setupSteamHandlers() {
             const lobbies = await client.matchmaking.getLobbies()
 
             return lobbies.map((l: any) => {
-                // Check if lobby has a game server associated (indicates in-game)
-                // UCP lobbies and our lobbies that have launched will have __gameserverSteamID set
-                const data = l.getFullData()
-                const hasGameServer = data.__gameserverSteamID && data.__gameserverSteamID !== '0'
-                const isInGame = hasGameServer || l.getData('status') === 'In Game'
+                try {
+                    // Check if lobby has a game server associated (indicates in-game)
+                    // UCP lobbies and our lobbies that have launched will have __gameserverSteamID set
+                    const data = l.getFullData()
+                    const hasGameServer = data.__gameserverSteamID && data.__gameserverSteamID !== '0'
+                    const isInGame = hasGameServer || l.getData('status') === 'In Game'
 
-                // Get owner info
-                const owner = l.getOwner()
-                const ownerId = owner.steamId64.toString()
-                const ownerName = owner.getName() || ownerId
+                    // Get owner info
+                    const owner = l.getOwner()
+                    const ownerId = owner ? owner.steamId64.toString() : 'Unknown'
+                    const ownerName = owner ? (owner.getName() || ownerId) : 'Unknown'
 
-                return {
-                    id: l.id.toString(),
-                    owner: ownerId,
-                    ownerName: ownerName,
-                    memberCount: l.getMemberCount(),
-                    maxMembers: l.getMemberLimit(),
-                    name: l.getData('name') || 'Unnamed Lobby',
-                    gameMode: (l.getData('gameMode') as 'crusader' | 'extreme') || 'crusader',
-                    isInGame
+                    return {
+                        id: l.id.toString(),
+                        owner: ownerId,
+                        ownerName: ownerName,
+                        memberCount: l.getMemberCount(),
+                        maxMembers: l.getMemberLimit(),
+                        name: l.getData('name') || 'Unnamed Lobby',
+                        gameMode: (l.getData('gameMode') as 'crusader' | 'extreme') || 'crusader',
+                        isInGame
+                    }
+                } catch (err) {
+                    console.error('Error mapping individual lobby:', err)
+                    return null
                 }
-            })
+            }).filter((l: any) => l !== null)
         } catch (err) {
             console.error('Failed to get lobbies:', err)
             return []

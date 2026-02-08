@@ -9,7 +9,7 @@ export interface ElectronAPI {
     getAuthTicket: () => Promise<string | null>
     getSteamFriends: () => Promise<any[]>
     createLobby: (maxMembers: number, lobbyName?: string, gameMode?: 'crusader' | 'extreme') => Promise<{ id: string; owner: string; name: string; gameMode: 'crusader' | 'extreme' }>
-    getLobbies: () => Promise<Array<{ id: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme' }>>
+    getLobbies: () => Promise<Array<{ id: string; owner: string; ownerName: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme' }>>
     joinLobby: (lobbyId: string) => Promise<{ id: string; owner: string }>
     leaveLobby: () => Promise<void>
     getLobbyMembers: () => Promise<Array<{ id: string; name: string }>>
@@ -25,6 +25,9 @@ export interface ElectronAPI {
     ucpRestoreFile: (path: string) => Promise<boolean>
     ucpWriteFile: (path: string, buffer: ArrayBuffer) => Promise<boolean>
     ucpUnzip: (zipPath: string, destPath: string) => Promise<boolean>
+
+    // Event system
+    on: (channel: string, callback: (_event: any, ...args: any[]) => void) => () => void
 }
 
 declare global {

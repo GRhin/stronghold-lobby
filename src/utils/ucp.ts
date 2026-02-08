@@ -311,7 +311,7 @@ export const checkDiff = async (lobbyId: string, inputPath: string): Promise<Fil
                         const inManifest = serverFiles.find(f => f.name === fileName)
                         if (!inManifest) {
                             console.log(`Missing optimized file detected: ${fileName}`)
-                            diffs.push({ file: fileName, reason: 'missing', type: 'module' })
+                            diffs.push({ file: fileName, reason: 'missing', type })
                         }
                     }
                 }

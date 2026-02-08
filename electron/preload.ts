@@ -32,7 +32,14 @@ contextBridge.exposeInMainWorld('electron', {
     ucpBackupFile: (path: string) => ipcRenderer.invoke('ucp-backup-file', path),
     ucpRestoreFile: (path: string) => ipcRenderer.invoke('ucp-restore-file', path),
     ucpWriteFile: (path: string, buffer: ArrayBuffer) => ipcRenderer.invoke('ucp-write-file', path, buffer),
-    ucpUnzip: (zipPath: string, destPath: string) => ipcRenderer.invoke('ucp-unzip', zipPath, destPath)
+    ucpUnzip: (zipPath: string, destPath: string) => ipcRenderer.invoke('ucp-unzip', zipPath, destPath),
+
+    // Event system
+    on: (channel: string, callback: (...args: any[]) => void) => {
+        const subscription = (_: any, ...args: any[]) => callback(_, ...args)
+        ipcRenderer.on(channel, subscription)
+        return () => ipcRenderer.removeListener(channel, subscription)
+    }
 })
 
 // Preload script

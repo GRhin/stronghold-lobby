@@ -15,7 +15,7 @@ interface SteamContextType {
     joinLobby: (lobbyId: string) => Promise<string>
     leaveLobby: () => Promise<void>
     refreshLobbyMembers: () => Promise<void>
-    lobbies: Array<{ id: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme' }>
+    lobbies: Array<{ id: string; owner: string; ownerName: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme' }>
     refreshLobbies: () => Promise<void>
 }
 
@@ -23,7 +23,7 @@ const SteamContext = createContext<SteamContextType | undefined>(undefined)
 
 export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [currentLobby, setCurrentLobby] = useState<SteamLobby | null>(null)
-    const [lobbies, setLobbies] = useState<Array<{ id: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme' }>>([])
+    const [lobbies, setLobbies] = useState<Array<{ id: string; owner: string; ownerName: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme' }>>([])
 
     const refreshLobbyMembers = useCallback(async () => {
         if (!currentLobby) return
@@ -119,7 +119,7 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const refreshLobbies = useCallback(async () => {
         try {
             const list = await window.electron.getLobbies()
-            setLobbies(list)
+            setLobbies(list as any)
         } catch (err) {
             console.error('Failed to get lobbies:', err)
         }
@@ -132,6 +132,42 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const interval = setInterval(refreshLobbyMembers, 2000)
         return () => clearInterval(interval)
     }, [currentLobby?.id, refreshLobbyMembers])
+
+    // Listen for external joins (via Steam UI/Friends list)
+    useEffect(() => {
+        const handleExternalJoin = async (_event: any, data: { id: string, owner: string }) => {
+            console.log('Received external join notification:', data)
+            setCurrentLobby({
+                id: data.id,
+                owner: data.owner,
+                name: 'Lobby',
+                gameMode: 'crusader',
+                members: []
+            })
+
+            // Fetch initial members
+            const members = await window.electron.getLobbyMembers()
+            setCurrentLobby(prev => prev ? { ...prev, members } : null)
+
+            // Notify server
+            socket.emit('steam:lobby_joined', data.id)
+
+            // Trigger navigation via custom event
+            window.dispatchEvent(new CustomEvent('steam:nav_to_lobby'))
+        }
+
+        const handleJoinRequested = (_event: any, data: { lobbyId: string }) => {
+            console.log('Received join requested notification:', data)
+            joinLobby(data.lobbyId)
+        }
+
+        window.electron.on('steam-lobby-external-join', handleExternalJoin)
+        window.electron.on('steam-lobby-join-requested', handleJoinRequested)
+
+        return () => {
+            // No easy way to remove specific listeners without exposing removeListener in preload
+        }
+    }, [joinLobby])
 
     return (
         <SteamContext.Provider value={{

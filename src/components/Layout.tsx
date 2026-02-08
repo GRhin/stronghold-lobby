@@ -1,11 +1,22 @@
-import React from 'react'
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useUser } from '../context/UserContext'
 import { useSteam } from '../context/SteamContext'
+import { useEffect } from 'react'
 
 const Layout: React.FC = () => {
     const { user } = useUser()
     const { currentLobby } = useSteam()
+    const navigate = useNavigate()
+
+    useEffect(() => {
+        const handleNavToLobby = () => {
+            console.log('Layout: Navigating to lobby room via custom event')
+            navigate('/lobby')
+        }
+
+        window.addEventListener('steam:nav_to_lobby' as any, handleNavToLobby)
+        return () => window.removeEventListener('steam:nav_to_lobby' as any, handleNavToLobby)
+    }, [navigate])
 
     const navItems = [
         { name: 'Lobbies', path: '/lobbies', icon: '🏰' },
