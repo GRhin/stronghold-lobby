@@ -16,35 +16,51 @@ export function initSteam() {
 }
 
 export function setupSteamHandlers() {
-    if (client && client.matchmaking) {
-        // Listen for internal lobby joins (including via Steam UI)
-        client.matchmaking.on('lobby-join', (lobby: any) => {
-            console.log('Detected external lobby join via Steam UI:', lobby.id.toString())
-            currentLobby = lobby
+    try {
+        if (client && client.matchmaking) {
+            console.log('Setting up Steam matchmaking listeners...')
+            if (typeof client.matchmaking.on === 'function') {
+                // Listen for internal lobby joins (including via Steam UI)
+                client.matchmaking.on('lobby-join', (lobby: any) => {
+                    console.log('Detected external lobby join via Steam UI:', lobby.id.toString())
+                    currentLobby = lobby
 
-            // Notify frontend
-            const windows = BrowserWindow.getAllWindows()
-            if (windows.length > 0) {
-                windows[0].webContents.send('steam-lobby-external-join', {
-                    id: lobby.id.toString(),
-                    owner: lobby.getOwner().steamId64.toString()
+                    const windows = BrowserWindow.getAllWindows()
+                    if (windows.length > 0) {
+                        windows[0].webContents.send('steam-lobby-external-join', {
+                            id: lobby.id.toString(),
+                            owner: lobby.getOwner().steamId64.toString()
+                        })
+                    }
                 })
+            } else {
+                console.warn('client.matchmaking.on is not a function. Steamworks.js version might differ.')
             }
-        })
+        }
+    } catch (err) {
+        console.error('Error setting up matchmaking listeners:', err)
     }
 
-    if (client && client.friends) {
-        // Listen for join requests from friends list
-        client.friends.on('game-lobby-join-requested', (lobbyId: any) => {
-            console.log('Join requested via Steam Friends list for lobby:', lobbyId.toString())
-            // Notify frontend so it can call joinLobby or navigate
-            const windows = BrowserWindow.getAllWindows()
-            if (windows.length > 0) {
-                windows[0].webContents.send('steam-lobby-join-requested', {
-                    lobbyId: lobbyId.toString()
+    try {
+        if (client && client.friends) {
+            console.log('Setting up Steam friends listeners...')
+            if (typeof client.friends.on === 'function') {
+                // Listen for join requests from friends list
+                client.friends.on('game-lobby-join-requested', (lobbyId: any) => {
+                    console.log('Join requested via Steam Friends list for lobby:', lobbyId.toString())
+                    const windows = BrowserWindow.getAllWindows()
+                    if (windows.length > 0) {
+                        windows[0].webContents.send('steam-lobby-join-requested', {
+                            lobbyId: lobbyId.toString()
+                        })
+                    }
                 })
+            } else {
+                console.warn('client.friends.on is not a function.')
             }
-        })
+        }
+    } catch (err) {
+        console.error('Error setting up friends listeners:', err)
     }
     ipcMain.handle('get-steam-user', () => {
         if (!client) return null
@@ -266,32 +282,35 @@ export function setupSteamHandlers() {
         try {
             // Listen for lobby chat messages
             // This uses Steam's callback system
-            client.matchmaking.on('lobby-chat-message', (lobbyId: any, sender: any, message: string) => {
-                if (currentLobby && lobbyId.toString() === currentLobby.id.toString()) {
-                    // Get sender name
-                    let senderName = sender.steamId64.toString()
-                    if (client.localplayer && sender.steamId64 === client.localplayer.getSteamId().steamId64) {
-                        senderName = client.localplayer.getName()
-                    } else {
-                        try {
-                            const name = currentLobby.getMemberData(sender.steamId64, 'name')
-                            if (name) senderName = name
-                        } catch (e) { }
-                    }
+            if (client.matchmaking && typeof client.matchmaking.on === 'function') {
+                client.matchmaking.on('lobby-chat-message', (lobbyId: any, sender: any, message: string) => {
+                    if (currentLobby && lobbyId.toString() === currentLobby.id.toString()) {
+                        // Get sender name
+                        let senderName = sender.steamId64.toString()
+                        if (client.localplayer && sender.steamId64 === client.localplayer.getSteamId().steamId64) {
+                            senderName = client.localplayer.getName()
+                        } else {
+                            try {
+                                const name = currentLobby.getMemberData(sender.steamId64, 'name')
+                                if (name) senderName = name
+                            } catch (e) { }
+                        }
 
-                    // Send to renderer process
-                    const windows = BrowserWindow.getAllWindows()
-                    if (windows.length > 0) {
-                        windows[0].webContents.send('lobby-chat-message', {
-                            senderId: sender.steamId64.toString(),
-                            senderName: senderName,
-                            message: message,
-                            timestamp: new Date().toISOString()
-                        })
+                        // Send to renderer process
+                        const windows = BrowserWindow.getAllWindows()
+                        if (windows.length > 0) {
+                            windows[0].webContents.send('lobby-chat-message', {
+                                senderId: sender.steamId64.toString(),
+                                senderName: senderName,
+                                message: message,
+                                timestamp: new Date().toISOString()
+                            })
+                        }
                     }
-                }
-            })
-            return true
+                })
+                return true
+            }
+            return false
         } catch (err) {
             console.error('Error setting up lobby chat listener:', err)
             return false
