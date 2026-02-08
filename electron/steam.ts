@@ -144,6 +144,8 @@ export function setupSteamHandlers() {
     ipcMain.handle('steam-get-lobbies', async () => {
         if (!client) return []
         try {
+            // Set distance filter to worldwide (3)
+            client.matchmaking.addRequestLobbyListDistanceFilter(3)
             const lobbies = await client.matchmaking.getLobbies()
             console.log(`fetching lobbies... found ${lobbies.length}`)
 
