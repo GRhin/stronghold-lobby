@@ -201,9 +201,18 @@ app.post('/api/lobby/:lobbyId/upload_chunk', upload.single('chunk'), async (req,
 
         await fs.unlink(chunkPath) // Cleanup the chunk file
 
-        // If last chunk, verify?
+        // If last chunk, flag lobby and notify
         if (parseInt(chunkIndex) === parseInt(totalChunks) - 1) {
             console.log(`Finished uploading ${filename} via chunks`)
+
+            if (filename === 'ucp-config.yml') {
+                const lobby = lobbies.find(l => l.id === lobbyId)
+                if (lobby) {
+                    lobby.hasCustomUCP = true
+                    io.to(lobbyId).emit('lobby:update', lobby)
+                }
+            }
+
             io.to(lobbyId).emit('ucp:updated', {
                 file: filename,
                 size: (await fs.stat(targetPath)).size,
@@ -220,15 +229,18 @@ app.post('/api/lobby/:lobbyId/upload_chunk', upload.single('chunk'), async (req,
 
 // 1. Upload File (Legacy/Small)
 app.post('/api/lobby/:lobbyId/upload', upload.single('file'), (req, res) => {
-    // console.log(`File uploaded for lobby ${req.params.lobbyId}:`, req.file.path)
     if (req.file) {
-        // If it's ucp-config.yml, we might want to parse it to update a manifest,
-        // but for now just storing it is enough. Clients will download it to check.
-
-        // Notify socket?
         const lobbyId = req.params.lobbyId
-        // Find if this is a valid lobby
-        // We can emit a general "update available" event to the lobby
+
+        // Flag lobby as having a custom UCP config if ucp-config.yml was uploaded
+        if (req.file.originalname === 'ucp-config.yml') {
+            const lobby = lobbies.find(l => l.id === lobbyId)
+            if (lobby) {
+                lobby.hasCustomUCP = true
+                io.to(lobbyId).emit('lobby:update', lobby)
+            }
+        }
+
         io.to(lobbyId).emit('ucp:updated', {
             file: req.file.originalname,
             size: req.file.size,
@@ -690,6 +702,7 @@ io.on('connection', (socket) => {
             isRated: !!data.isRated,
             steamLobbyId: null,
             status: 'Open',
+            hasCustomUCP: false,
             players: [{
                 id: socket.id,
                 steamId: mySteamId,

@@ -401,6 +401,39 @@ const LobbyRoom: React.FC = () => {
         }
     }
 
+    // Fetch UCP module list from server config
+    const fetchUcpModules = async (lobbyId: string) => {
+        try {
+            const SERVER = import.meta.env.DEV ? 'http://localhost:3000' : 'https://stronghold-lobby.onrender.com'
+            const response = await fetch(`${SERVER}/api/lobby/${lobbyId}/file/ucp-config.yml`)
+            if (response.ok) {
+                const configText = await response.text()
+                const yaml = await import('js-yaml')
+                const config = yaml.load(configText) as UCPConfig
+                const loadOrder = config['config-full']?.['load-order'] || []
+                const modules = loadOrder.map(item => ({
+                    name: item.extension,
+                    version: item.version,
+                    type: (config['config-full']?.modules?.[item.extension] ? 'module' : 'plugin') as 'module' | 'plugin'
+                }))
+                setUcpModules(modules)
+                setHasCustomMod(true)
+            }
+        } catch (err) {
+            console.error('Failed to fetch UCP config:', err)
+        }
+    }
+
+    // Auto-load mod list when server lobby says there IS a custom UCP config
+    useEffect(() => {
+        if (serverLobby?.hasCustomUCP && serverLobby?.id) {
+            fetchUcpModules(serverLobby.id)
+        } else if (!serverLobby?.hasCustomUCP) {
+            setHasCustomMod(false)
+            setUcpModules([])
+        }
+    }, [serverLobby?.hasCustomUCP, serverLobby?.id])
+
     useEffect(() => {
         if (serverLobby?.id && !isHost) {
             performSyncCheck()
@@ -408,29 +441,8 @@ const LobbyRoom: React.FC = () => {
 
         const onUcpUpdate = async () => {
             console.log('Host updated UCP, checking...')
-            setHasCustomMod(true) // Mark that custom mods are present
-
-            // Fetch UCP config to get modules list
-            if (serverLobby?.id) {
-                try {
-                    const response = await fetch(`${import.meta.env.DEV ? 'http://localhost:3000' : 'https://stronghold-lobby.onrender.com'}/api/lobby/${serverLobby.id}/file/ucp-config.yml`)
-                    if (response.ok) {
-                        const configText = await response.text()
-                        const yaml = await import('js-yaml')
-                        const config = yaml.load(configText) as UCPConfig
-                        const loadOrder = config['config-full']?.['load-order'] || []
-                        const modules = loadOrder.map(item => ({
-                            name: item.extension,
-                            version: item.version,
-                            type: (config['config-full']?.modules?.[item.extension] ? 'module' : 'plugin') as 'module' | 'plugin'
-                        }))
-                        setUcpModules(modules)
-                    }
-                } catch (err) {
-                    console.error('Failed to fetch UCP config:', err)
-                }
-            }
-
+            // The server will now emit lobby:update with hasCustomUCP=true to handle the flag.
+            // Just re-check sync for joiners.
             performSyncCheck()
         }
         socket.on('ucp:updated', onUcpUpdate)
