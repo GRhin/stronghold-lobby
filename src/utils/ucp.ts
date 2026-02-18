@@ -386,7 +386,8 @@ export const downloadUpdates = async (
                 targetDir
             )
             onProgress(`Installing plugin ${filename}...`)
-            await window.electron.ucpUnzip(zipPath, targetDir)
+            const pluginDir = targetDir + '\\' + filename.replace('.zip', '')
+            await window.electron.ucpUnzip(zipPath, pluginDir)
             // Cleanup the zip itself since we track the folder
             await window.electron.ucpDeleteFile(zipPath)
         } else {
