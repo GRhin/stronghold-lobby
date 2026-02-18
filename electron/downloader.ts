@@ -41,10 +41,10 @@ export function setupDownloaderHandlers() {
             await pipeline(stream, createWriteStream(filePath))
 
             console.log(`Download complete: ${filePath}`)
-            return { success: true, path: filePath }
+            return filePath
         } catch (error: any) {
             console.error('Download error:', error)
-            return { success: false, error: error.message }
+            throw error // Throw so the renderer catch block handles it
         }
     })
 }

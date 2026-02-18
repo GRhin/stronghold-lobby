@@ -104,6 +104,9 @@ export function setupUCPHandlers() {
 
     ipcMain.handle('ucp-unzip', async (_, zipPath: string, destPath: string) => {
         try {
+            if (!fs.existsSync(destPath)) {
+                fs.mkdirSync(destPath, { recursive: true })
+            }
             const zip = new AdmZip(zipPath)
             zip.extractAllTo(destPath, true)
             return true
