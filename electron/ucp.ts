@@ -112,4 +112,21 @@ export function setupUCPHandlers() {
             throw err
         }
     })
+    ipcMain.handle('ucp-delete-file', async (_, filePath: string) => {
+        try {
+            if (fs.existsSync(filePath)) {
+                const stats = await fs.promises.stat(filePath)
+                if (stats.isDirectory()) {
+                    await fs.promises.rm(filePath, { recursive: true, force: true })
+                } else {
+                    await fs.promises.unlink(filePath)
+                }
+                return true
+            }
+            return false
+        } catch (err) {
+            console.error('Delete failed:', err)
+            throw err
+        }
+    })
 }

@@ -32,7 +32,8 @@ contextBridge.exposeInMainWorld('electron', {
     ucpBackupFile: (path: string) => ipcRenderer.invoke('ucp-backup-file', path),
     ucpRestoreFile: (path: string) => ipcRenderer.invoke('ucp-restore-file', path),
     ucpWriteFile: (path: string, buffer: ArrayBuffer) => ipcRenderer.invoke('ucp-write-file', path, buffer),
-    ucpUnzip: (zipPath: string, destPath: string) => ipcRenderer.invoke('ucp-unzip', zipPath, destPath)
+    ucpUnzip: (zipPath: string, destPath: string) => ipcRenderer.invoke('ucp-unzip', zipPath, destPath),
+    ucpDeleteFile: (path: string) => ipcRenderer.invoke('ucp-delete-file', path)
 })
 
 // Preload script

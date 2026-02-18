@@ -25,6 +25,7 @@ export interface ElectronAPI {
     ucpRestoreFile: (path: string) => Promise<boolean>
     ucpWriteFile: (path: string, buffer: ArrayBuffer) => Promise<boolean>
     ucpUnzip: (zipPath: string, destPath: string) => Promise<boolean>
+    ucpDeleteFile: (path: string) => Promise<boolean>
 }
 
 declare global {

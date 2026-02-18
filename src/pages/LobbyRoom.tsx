@@ -8,7 +8,7 @@ import { useSteam } from '../context/SteamContext'
 import { useSettings } from '../context/SettingsContext'
 import { useChat } from '../context/ChatContext'
 import { useSmartScroll } from '../hooks/useSmartScroll'
-import { syncUCP, checkDiff, downloadUpdates, restoreBackups } from '../utils/ucp'
+import { syncUCP, checkDiff, downloadUpdates, restoreBackups, downloadConfigToPath } from '../utils/ucp'
 import type { FileDiff, UCPConfig } from '../utils/ucp'
 import UCPSyncModal from '../components/UCPSyncModal'
 import UCPModulesModal from '../components/UCPModulesModal'
@@ -467,10 +467,29 @@ const LobbyRoom: React.FC = () => {
             // Use serverLobby.id (Internal ID)
             await syncUCP(serverLobby.id, gamePath, setUcpStatus)
             setUcpStatus(null)
+            setHasCustomMod(true) // Update locally immediately
             alert('UCP Setup Uploaded Successfully!')
         } catch (err: any) {
             setUcpStatus('Error: ' + err.message)
             console.error(err)
+        }
+    }
+
+    const handleTestDownload = async () => {
+        if (!serverLobby) return
+        // Use folder picker to select custom download location
+        try {
+            const customPath = await window.electron.selectGamePath()
+            if (!customPath) return
+
+            setUcpStatus('Testing Download...')
+            await downloadConfigToPath(serverLobby.id, customPath, setSyncStatus)
+            alert('Config downloaded to: ' + customPath)
+        } catch (err: any) {
+            alert('Test Download failed: ' + err.message)
+        } finally {
+            setUcpStatus(null)
+            setSyncStatus(null)
         }
     }
 
@@ -510,6 +529,11 @@ const LobbyRoom: React.FC = () => {
                     <Button variant="secondary" onClick={handleLeave}>Leave Lobby</Button>
                     {isHost && ((
                         <>
+                            {hasCustomMod && (
+                                <Button variant="secondary" onClick={handleTestDownload} disabled={!!ucpStatus}>
+                                    Test Download
+                                </Button>
+                            )}
                             <Button variant="secondary" onClick={handleUploadUCP} disabled={!!ucpStatus}>
                                 {ucpStatus || 'Upload UCP Config'}
                             </Button>

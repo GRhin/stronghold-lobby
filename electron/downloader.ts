@@ -15,7 +15,9 @@ export function setupDownloaderHandlers() {
             // If targetFolder is 'maps', we go to Documents/Stronghold Crusader/Maps (example)
 
             let downloadPath = ''
-            if (targetFolder === 'maps') {
+            if (path.isAbsolute(targetFolder)) {
+                downloadPath = targetFolder
+            } else if (targetFolder === 'maps') {
                 downloadPath = path.join(app.getPath('documents'), 'Stronghold Crusader', 'Maps')
             } else if (targetFolder === 'ucp') {
                 downloadPath = path.join(app.getPath('userData'), 'UCP')

@@ -22,6 +22,8 @@ const CACHED_SERVER_URL = isDevelopment
     ? 'http://localhost:3000'
     : 'https://stronghold-lobby.onrender.com'
 
+const SYNC_HISTORY_FILE = '.ucp-sync-history.json'
+
 const getGameDir = (path: string) => {
     // If path points to an executable, strip it to get directory
     // Basic check for .exe extension
@@ -217,6 +219,7 @@ export interface FileDiff {
     reason: 'missing' | 'size_mismatch' | 'version_mismatch'
     type: 'config' | 'dll' | 'module' | 'plugin'
     serverSize?: number
+    sourceUrl?: string
 }
 
 export const checkDiff = async (lobbyId: string, inputPath: string): Promise<FileDiff[]> => {
@@ -234,49 +237,28 @@ export const checkDiff = async (lobbyId: string, inputPath: string): Promise<Fil
     // 2. Check UCP Config
     const configName = 'ucp-config.yml'
     const serverConfig = serverFiles.find(f => f.name === configName)
+    let remoteConfig: UCPConfig | null = null
+
     if (serverConfig) {
-        // Just check if local exists. Content check is hard without downloading.
-        // We can check size, but config size varies.
-        // Usually we ALWAYS download config if host has one, or verify version inside.
-        // For simplicity, if host has ucp-config, we flag it as needed if local is different?
-        // Actually, request says: "check their ucp-config.yml file, and find out if it contains all modules or plugins with same version"
-        // This implies we need to download the HOST config to memory first to compare.
         const configUrl = `${CACHED_SERVER_URL}/api/lobby/${lobbyId}/file/${configName}`
         const configRes = await fetch(configUrl)
         if (configRes.ok) {
             const serverConfigContent = await configRes.text()
             const localConfigContent = await window.electron.ucpReadFile(gamePath + '\\ucp-config.yml').catch(() => '')
 
-            // Simple string compare or deep compare?
-            // If different, we need to sync.
-            // But wait, user might have EXTRA mods.
-            // The logic "find out if it contains ALL modules... with SAME version"
-            // implies superset is allowed? Request: "If there is a difference... prompt... to download differences"
-
-            // Let's parse both.
             const localConfig = yaml.load(localConfigContent) as UCPConfig
-            const remoteConfig = yaml.load(serverConfigContent) as UCPConfig
+            remoteConfig = yaml.load(serverConfigContent) as UCPConfig
 
-            // Compare modules/plugins
-            // Check if local has everything remote has.
             let configDifferent = false
-
             const remoteLoadOrder = remoteConfig['config-full']?.['load-order']
-            const localLoadOrder = localConfig['config-full']?.['load-order']
+            const localLoadOrder = localConfig?.['config-full']?.['load-order']
 
             if (remoteLoadOrder) {
                 for (const item of remoteLoadOrder) {
-                    // Check if local has this
                     const localItem = localLoadOrder?.find(i => i.extension === item.extension)
                     if (!localItem || localItem.version !== item.version) {
                         configDifferent = true
-
-                        // Also check if we have the file
-                        // extension-version.zip or folder
-                        // We rely on the manifest for physical files, but logic says check config first.
-
-                        // If config is different, we basically should sync the config.
-                        // And then we need the files.
+                        break
                     }
                 }
             }
@@ -287,75 +269,78 @@ export const checkDiff = async (lobbyId: string, inputPath: string): Promise<Fil
         }
     }
 
-    // 3. Check DLLs and others from Manifest
-    // The manifest lists all uploaded files.
-    for (const sFile of serverFiles) {
-        if (sFile.name === 'ucp-config.yml') continue // Handled
+    // 3. Check for specific files required by the remote config
+    if (remoteConfig) {
+        const remoteLoadOrder = remoteConfig['config-full']?.['load-order'] || []
 
-        // Check if file exists locally and size matches
-        // Location depends on type.
-        // DLLs are in root. Modules in ucp/modules. Plugins in ucp/plugins (zip).
+        // Fetch GitHub extensions cache for verification
+        let githubExtensions: Map<string, any> = new Map()
+        try {
+            const githubRes = await fetch(`${CACHED_SERVER_URL}/api/github_extensions`)
+            const githubData = await githubRes.json()
+            if (githubData.success && githubData.extensions) {
+                githubExtensions = new Map(githubData.extensions.map((ext: any) => [ext.name, ext]))
+            }
+        } catch (err) {
+            console.warn('GitHub extensions cache unavailable during checkDiff')
+        }
 
-        let localPath = ''
-        let type: FileDiff['type'] = 'dll'
+        for (const item of remoteLoadOrder) {
+            const ext = item.extension
+            const ver = item.version
+            const zipName = `${ext}-${ver}.zip`
 
-        if (CORE_DLLS.includes(sFile.name)) {
-            localPath = gamePath + '\\' + sFile.name
-            type = 'dll'
-        } else if (sFile.name.endsWith('.zip') || sFile.name.endsWith('.sig')) {
-            // Could be module or plugin
-            // Modules: <name>-<ver>.zip
-            // Plugins: <name>.zip (if we zipped the folder)
-            // But in uploadUCP we zipped plugins as <foldername>.zip where foldername is <name>-<ver>
-            // So both look like <name>-<ver>.zip
-            // We can check existence in both or infer.
-            // Modules usually inside ucp/modules. Plugins inside ucp/plugins.
-            // We'll check ucp/modules first.
+            // Determine type
+            const isModule = remoteConfig['config-full']?.modules?.[ext] !== undefined
+            const type: FileDiff['type'] = isModule ? 'module' : 'plugin'
 
-            const inModules = await window.electron.ucpGetStats(gamePath + '\\ucp\\modules\\' + sFile.name)
-            if (inModules) {
-                localPath = gamePath + '\\ucp\\modules\\' + sFile.name
-                type = 'module'
+            if (isModule) {
+                // Modules check: ucp/modules/<name>-<ver>.zip
+                const localZipPath = gamePath + '\\ucp\\modules\\' + zipName
+                const stats = await window.electron.ucpGetStats(localZipPath)
+                const sFile = serverFiles.find(f => f.name === zipName)
+                const gFile = githubExtensions.get(zipName)
+
+                if (!stats) {
+                    diffs.push({
+                        file: zipName,
+                        reason: 'missing',
+                        type,
+                        serverSize: sFile?.size || gFile?.size,
+                        sourceUrl: sFile ? undefined : gFile?.downloadUrl
+                    })
+                } else if (sFile && stats.size !== sFile.size) {
+                    diffs.push({ file: zipName, reason: 'size_mismatch', type, serverSize: sFile.size })
+                }
             } else {
-                // Check plugins
-                // For plugins, we zipped them. So sFile is .zip. 
-                // Local might be a folder or a zip?
-                // Usually plugins are extracted.
-                // So we check if the FOLDER exists?
-                // sFile name is "Ascension-AI-1.0.0.zip".
-                // Local folder should be "Ascension-AI-1.0.0".
-                const folderName = sFile.name.replace('.zip', '')
-                const inPlugins = await window.electron.ucpGetStats(gamePath + '\\ucp\\plugins\\' + folderName)
+                // Plugins check: ucp/plugins/<name>-<ver> folder
+                const folderName = `${ext}-${ver}`
+                const localFolderPath = gamePath + '\\ucp\\plugins\\' + folderName
+                const stats = await window.electron.ucpGetStats(localFolderPath)
+                const gFile = githubExtensions.get(zipName)
+                const sFile = serverFiles.find(f => f.name === zipName)
 
-                if (inPlugins) {
-                    // It exists. But we can't easily check size against zip.
-                    // We might assume if folder exists with right name (ver included), it's good.
-                    // IMPORTANT: Request says "rename old versions (if dlls are different)".
-                    // For plugins/modules, duplicate versions might coexist if names differ?
-                    // "delete old versions... rename back when leave".
-
-                    // If we strictly follow "host uploaded this specific zip", we should probably ensure we have it.
-                    // But we can't verify folder vs zip size.
-                    // We'll skip size check for plugins if folder exists.
-                    continue
-                } else {
-                    // Missing
-                    localPath = '' // flag as missing
-                    type = 'plugin'
+                if (!stats) {
+                    diffs.push({
+                        file: zipName,
+                        reason: 'missing',
+                        type,
+                        sourceUrl: sFile ? undefined : gFile?.downloadUrl
+                    })
                 }
             }
         }
+    }
 
-        if (!localPath) {
-            diffs.push({ file: sFile.name, reason: 'missing', type, serverSize: sFile.size })
-            continue
-        }
-
-        // Check size for DLLs/Modules (binary)
-        if (localPath && type !== 'plugin') {
+    // 4. Check Core DLLs from Manifest
+    for (const sFile of serverFiles) {
+        if (CORE_DLLS.includes(sFile.name)) {
+            const localPath = gamePath + '\\' + sFile.name
             const stats = await window.electron.ucpGetStats(localPath)
-            if (!stats || stats.size !== sFile.size) {
-                diffs.push({ file: sFile.name, reason: 'size_mismatch', type, serverSize: sFile.size })
+            if (!stats) {
+                diffs.push({ file: sFile.name, reason: 'missing', type: 'dll', serverSize: sFile.size })
+            } else if (stats.size !== sFile.size) {
+                diffs.push({ file: sFile.name, reason: 'size_mismatch', type: 'dll', serverSize: sFile.size })
             }
         }
     }
@@ -385,51 +370,68 @@ export const downloadUpdates = async (
     }
 
     // 2. Download others
+    const addedFiles: string[] = []
+
     for (const diff of diffs) {
         if (diff.type === 'config') continue
 
         let targetDir = gamePath
         if (diff.type === 'dll') targetDir = gamePath
         if (diff.type === 'module') targetDir = gamePath + '\\ucp\\modules'
-        if (diff.type === 'plugin') targetDir = gamePath + '\\ucp\\plugins' // We download zip here then unzip?
+        if (diff.type === 'plugin') targetDir = gamePath + '\\ucp\\plugins'
 
         const filename = diff.file
+        const fullPath = targetDir + '\\' + filename
+
+        // Check if file exists before downloading (to track additions)
+        const stats = await window.electron.ucpGetStats(fullPath)
+        const exists = !!stats
 
         // Backup if exists (and size mismatch)
-        if (diff.reason === 'size_mismatch' && diff.type !== 'plugin') { // Plugins are folders, specialized logic
-            let fullPath = targetDir + '\\' + filename
+        if (exists && diff.reason === 'size_mismatch' && diff.type !== 'plugin') {
             await window.electron.ucpBackupFile(fullPath)
+        } else if (!exists) {
+            // Track as added
+            if (diff.type === 'plugin') {
+                addedFiles.push(targetDir + '\\' + filename.replace('.zip', ''))
+            } else {
+                addedFiles.push(fullPath)
+            }
         }
 
         onProgress(`Downloading ${filename}...`)
-        // downloadFile downloads to targetDir
-        // Note: downloadFile implementation in electron might just save to folder.
+        const downloadUrl = diff.sourceUrl || `${CACHED_SERVER_URL}/api/lobby/${lobbyId}/file/${filename}`
 
-        // For plugins, we are downloading a ZIP.
-        // If it's a plugin, we download to temp or ucp/plugins then unzip.
         if (diff.type === 'plugin') {
-            // Download zip
             const zipPath = await window.electron.downloadFile(
-                `${CACHED_SERVER_URL}/api/lobby/${lobbyId}/file/${filename}`,
+                downloadUrl,
                 filename,
                 targetDir
             )
-
             onProgress(`Installing plugin ${filename}...`)
-            // Unzip
-            // dest is targetDir (ucp/plugins)
             await window.electron.ucpUnzip(zipPath, targetDir)
-
-            // Delete zip?
-            // window.electron.ucpDeleteFile(zipPath) // Not impl yet
-            // Leaving zip is fine or cleanup.
-            // We can ignore cleanup for now.
+            // Cleanup the zip itself since we track the folder
+            await window.electron.ucpDeleteFile(zipPath)
         } else {
             await window.electron.downloadFile(
-                `${CACHED_SERVER_URL}/api/lobby/${lobbyId}/file/${filename}`,
+                downloadUrl,
                 filename,
                 targetDir
             )
+        }
+    }
+
+    // Save added files history
+    if (addedFiles.length > 0) {
+        try {
+            const historyPath = gamePath + '\\' + SYNC_HISTORY_FILE
+            const existingHistoryData = await window.electron.ucpReadFile(historyPath).catch(() => '{"addedFiles":[]}')
+            const history = JSON.parse(existingHistoryData)
+            history.addedFiles = Array.from(new Set([...history.addedFiles, ...addedFiles]))
+            const buffer = new TextEncoder().encode(JSON.stringify(history))
+            await window.electron.ucpWriteFile(historyPath, (buffer as any)) // Cast to any to bypass potential Electron Buffer mismatch
+        } catch (err) {
+            console.error('Failed to save sync history:', err)
         }
     }
 
@@ -438,6 +440,8 @@ export const downloadUpdates = async (
 
 export const restoreBackups = async (inputPath: string) => {
     const gamePath = getGameDir(inputPath)
+
+    // 1. Restore Backup Files
     // Config
     await window.electron.ucpRestoreFile(gamePath + '\\ucp-config.yml')
 
@@ -446,10 +450,38 @@ export const restoreBackups = async (inputPath: string) => {
         await window.electron.ucpRestoreFile(gamePath + '\\' + dll)
     }
 
-    // Modules?
-    // We backed up mismatching modules.
-    // We assume we can try restoring anything with .bak
-    // But we don't know exact list without tracking.
-    // For now, only explicit restores of core components is CRITICAL.
-    // Modules/plugins are additive mostly.
+    // 2. Cleanup Added Files
+    try {
+        const historyPath = gamePath + '\\' + SYNC_HISTORY_FILE
+        const historyData = await window.electron.ucpReadFile(historyPath).catch(() => null)
+        if (historyData) {
+            const history = JSON.parse(historyData)
+            if (history.addedFiles && Array.isArray(history.addedFiles)) {
+                console.log(`Cleaning up ${history.addedFiles.length} added files/folders...`)
+                for (const filePath of history.addedFiles) {
+                    await window.electron.ucpDeleteFile(filePath)
+                }
+            }
+            // Delete history file itself
+            await window.electron.ucpDeleteFile(historyPath)
+        }
+    } catch (err) {
+        console.error('Failed to cleanup sync history:', err)
+    }
+}
+
+export const downloadConfigToPath = async (lobbyId: string, customPath: string, onProgress: (status: string) => void) => {
+    const targetDir = getGameDir(customPath)
+    onProgress('Downloading config...')
+    try {
+        await window.electron.downloadFile(
+            `${CACHED_SERVER_URL}/api/lobby/${lobbyId}/file/ucp-config.yml`,
+            'ucp-config.yml',
+            targetDir
+        )
+        onProgress('Done!')
+    } catch (err: any) {
+        onProgress('Error: ' + err.message)
+        throw err
+    }
 }
