@@ -224,6 +224,7 @@ export interface FileDiff {
 
 export const checkDiff = async (lobbyId: string, inputPath: string): Promise<FileDiff[]> => {
     const gamePath = getGameDir(inputPath)
+    console.log(`[UCP Sync] Checking for differences in: ${gamePath}`)
     // 1. Get Server Manifest
     const res = await fetch(`${CACHED_SERVER_URL}/api/lobby/${lobbyId}/manifest`)
     if (!res.ok) return []
@@ -345,6 +346,7 @@ export const checkDiff = async (lobbyId: string, inputPath: string): Promise<Fil
         }
     }
 
+    console.log(`[UCP Sync] Check complete. Found ${diffs.length} differences.`)
     return diffs
 }
 
@@ -355,6 +357,7 @@ export const downloadUpdates = async (
     onProgress: (status: string) => void
 ) => {
     const gamePath = getGameDir(inputPath)
+    console.log(`[UCP Sync] Starting download of ${diffs.length} updates to: ${gamePath}`)
     // 1. Download Config if needed
     const configDiff = diffs.find(d => d.type === 'config')
     if (configDiff) {
@@ -362,6 +365,7 @@ export const downloadUpdates = async (
         await window.electron.ucpBackupFile(gamePath + '\\ucp-config.yml')
 
         onProgress('Downloading config...')
+        console.log(`[UCP Sync] Downloading config...`)
         await window.electron.downloadFile(
             `${CACHED_SERVER_URL}/api/lobby/${lobbyId}/file/ucp-config.yml`,
             'ucp-config.yml',
@@ -382,6 +386,8 @@ export const downloadUpdates = async (
 
         const filename = diff.file
         const fullPath = targetDir + '\\' + filename
+
+        console.log(`[UCP Sync] Processing ${diff.type}: ${filename} (${diff.reason})`)
 
         // Check if file exists before downloading (to track additions)
         const stats = await window.electron.ucpGetStats(fullPath)
@@ -436,6 +442,7 @@ export const downloadUpdates = async (
     }
 
     onProgress('Sync Complete!')
+    console.log('[UCP Sync] Download updates finished successfully')
 }
 
 export const restoreBackups = async (inputPath: string) => {
@@ -471,16 +478,36 @@ export const restoreBackups = async (inputPath: string) => {
 }
 
 export const downloadConfigToPath = async (lobbyId: string, customPath: string, onProgress: (status: string) => void) => {
-    const targetDir = getGameDir(customPath)
-    onProgress('Downloading config...')
+    const gamePath = getGameDir(customPath)
+    console.log(`Starting Unified Test Download to: ${gamePath}`)
+    onProgress('Starting sync...')
     try {
+        // 1. Download Config (matches start of joiner sync)
+        onProgress('Downloading configuration...')
         await window.electron.downloadFile(
             `${CACHED_SERVER_URL}/api/lobby/${lobbyId}/file/ucp-config.yml`,
             'ucp-config.yml',
-            targetDir
+            gamePath
         )
+
+        // 2. Run Difference Check
+        onProgress('Analyzing requirements...')
+        const diffs = await checkDiff(lobbyId, customPath)
+        console.log('Sync differences identified:', diffs)
+
+        // 3. Download Updates (The main sync step)
+        if (diffs.length > 0) {
+            onProgress(`Syncing ${diffs.length} components...`)
+            await downloadUpdates(lobbyId, customPath, diffs, onProgress)
+        } else {
+            console.log('No differences found, everything up to date.')
+            onProgress('Already up to date!')
+        }
+
+        console.log('Unified Test Download completed successfully')
         onProgress('Done!')
     } catch (err: any) {
+        console.error('Unified Test Download failed:', err)
         onProgress('Error: ' + err.message)
         throw err
     }
