@@ -7,6 +7,7 @@ interface SteamLobby {
     name: string
     gameMode: 'crusader' | 'extreme'
     members: Array<{ id: string; name: string }>
+    isInGame: boolean
 }
 
 interface SteamContextType {
@@ -15,7 +16,7 @@ interface SteamContextType {
     joinLobby: (lobbyId: string) => Promise<string>
     leaveLobby: () => Promise<void>
     refreshLobbyMembers: () => Promise<void>
-    lobbies: Array<{ id: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme' }>
+    lobbies: Array<{ id: string; owner: string; ownerName: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme'; isInGame: boolean }>
     refreshLobbies: () => Promise<void>
 }
 
@@ -23,7 +24,7 @@ const SteamContext = createContext<SteamContextType | undefined>(undefined)
 
 export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [currentLobby, setCurrentLobby] = useState<SteamLobby | null>(null)
-    const [lobbies, setLobbies] = useState<Array<{ id: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme' }>>([])
+    const [lobbies, setLobbies] = useState<Array<{ id: string; owner: string; ownerName: string; memberCount: number; maxMembers: number; name: string; gameMode: 'crusader' | 'extreme'; isInGame: boolean }>>([])
 
     const refreshLobbyMembers = useCallback(async () => {
         if (!currentLobby) return
@@ -47,7 +48,8 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 owner: result.owner,
                 name: result.name,
                 gameMode: result.gameMode,
-                members: initialMembers
+                members: initialMembers,
+                isInGame: false
             })
 
             // Create persistent server lobby if not skipping
@@ -85,7 +87,8 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 owner: result.owner,
                 name: 'Lobby', // Will be fetched when we get lobby data
                 gameMode: 'crusader', // Default until fetched
-                members: [] // Will be populated by refresh
+                members: [], // Will be populated by refresh
+                isInGame: false
             })
             // Immediately fetch members
             const members = await window.electron.getLobbyMembers()

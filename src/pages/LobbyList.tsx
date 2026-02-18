@@ -156,8 +156,8 @@ const LobbyList: React.FC = () => {
                             className="group bg-surface hover:bg-surface/80 border border-white/5 hover:border-primary/50 rounded-xl p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer relative overflow-hidden"
                         >
                             {/* Status Indicator */}
-                            <div className={`absolute top-0 right-0 px-3 py-1 text-xs font-bold rounded-bl-lg bg-green-500/20 text-green-400`}>
-                                Open
+                            <div className={`absolute top-0 right-0 px-3 py-1 text-xs font-bold rounded-bl-lg ${lobby.isInGame ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                                {lobby.isInGame ? 'In Game' : 'Open'}
                             </div>
 
                             <h3 className="text-xl font-bold text-primary mb-1 group-hover:text-white transition-colors">{lobby.name}</h3>
@@ -176,24 +176,14 @@ const LobbyList: React.FC = () => {
                                         {lobby.gameMode === 'extreme' ? '⚡ EXTREME' : '🏰 CRUSADER'}
                                     </span>
                                 </div>
-                                {/* @ts-ignore */}
-                                {lobby.isInGame && (
-                                    <div className="bg-red-500/20 text-red-400 text-xs px-2 py-1 rounded text-center font-bold mt-2">
-                                        IN GAME
-                                    </div>
-                                )}
                             </div>
 
                             <Button
                                 variant="outline"
-                                // @ts-ignore
                                 className={`w-full ${lobby.isInGame ? 'opacity-50 cursor-not-allowed' : 'group-hover:bg-primary group-hover:text-black group-hover:border-primary'}`}
-                                // @ts-ignore
                                 onClick={() => !lobby.isInGame && handleJoin(lobby.id)}
-                                // @ts-ignore
                                 disabled={lobby.isInGame}
                             >
-                                {/* @ts-ignore */}
                                 {lobby.isInGame ? 'In Game' : 'Join Game'}
                             </Button>
                         </div>

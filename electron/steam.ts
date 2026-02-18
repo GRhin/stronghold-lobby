@@ -110,7 +110,12 @@ export function setupSteamHandlers() {
                 // Get owner info
                 const owner = l.getOwner()
                 const ownerId = owner.steamId64.toString()
-                const ownerName = owner.getName() || ownerId
+                let ownerName = ownerId
+                try {
+                    ownerName = client.friends.getFriendPersonaName(owner) || ownerId
+                } catch (e) {
+                    console.warn('Failed to get persona name for lobby owner:', ownerId)
+                }
 
                 return {
                     id: l.id.toString(),
