@@ -8,13 +8,7 @@ export interface UCPConfig {
     }
 }
 
-export const CORE_DLLS = [
-    'binkw32.dll',
-    'ucp.dll',
-    'binkw32_real.dll', // Often renamed original
-    'RPS.dll',
-    'lua.dll'
-]
+// CORE_DLLS are now handled by UCP3 GUI installation and skipped in our sync
 
 // Determine the server URL based on environment
 const isDevelopment = import.meta.env.DEV
@@ -125,19 +119,7 @@ export const syncUCP = async (
     const configBlob = new Blob([configContent], { type: 'text/yaml' })
     await uploadFile(lobbyId, configBlob, 'ucp-config.yml')
 
-    // Upload Core DLLs
-    onProgress('Uploading Core DLLs...')
-    for (const dll of CORE_DLLS) {
-        try {
-            const buffer = await window.electron.ucpReadBinary(gamePath + '\\' + dll)
-            if (buffer) {
-                const blob = new Blob([buffer as any])
-                await uploadFile(lobbyId, blob, dll)
-            }
-        } catch (e) {
-            console.log(`Skipping ${dll} (not found)`)
-        }
-    }
+    // CORE_DLLS sync removed - handled by external UCP3 GUI setup
 
     // Process load-order for modules and plugins
     const loadOrder = config['config-full']?.['load-order']
@@ -333,18 +315,7 @@ export const checkDiff = async (lobbyId: string, inputPath: string): Promise<Fil
         }
     }
 
-    // 4. Check Core DLLs from Manifest
-    for (const sFile of serverFiles) {
-        if (CORE_DLLS.includes(sFile.name)) {
-            const localPath = gamePath + '\\' + sFile.name
-            const stats = await window.electron.ucpGetStats(localPath)
-            if (!stats) {
-                diffs.push({ file: sFile.name, reason: 'missing', type: 'dll', serverSize: sFile.size })
-            } else if (stats.size !== sFile.size) {
-                diffs.push({ file: sFile.name, reason: 'size_mismatch', type: 'dll', serverSize: sFile.size })
-            }
-        }
-    }
+    // CORE_DLLS check removed - handled by external UCP3 GUI setup
 
     console.log(`[UCP Sync] Check complete. Found ${diffs.length} differences.`)
     return diffs
@@ -452,10 +423,7 @@ export const restoreBackups = async (inputPath: string) => {
     // Config
     await window.electron.ucpRestoreFile(gamePath + '\\ucp-config.yml')
 
-    // DLLs
-    for (const dll of CORE_DLLS) {
-        await window.electron.ucpRestoreFile(gamePath + '\\' + dll)
-    }
+    // DLLs restore removed - handled by external UCP3 GUI setup
 
     // 2. Cleanup Added Files
     try {

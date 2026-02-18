@@ -13,6 +13,7 @@ import type { FileDiff, UCPConfig } from '../utils/ucp'
 import UCPSyncModal from '../components/UCPSyncModal'
 import UCPModulesModal from '../components/UCPModulesModal'
 import { socket } from '../socket'
+import UCPSetupGuide from '../components/UCPSetupGuide'
 
 const LobbyRoom: React.FC = () => {
     const navigate = useNavigate()
@@ -544,6 +545,8 @@ const LobbyRoom: React.FC = () => {
                     ))}
                 </div>
             </div>
+
+            <UCPSetupGuide />
 
             <div className="flex-1 flex gap-6 min-h-0">
                 {/* Player List */}
