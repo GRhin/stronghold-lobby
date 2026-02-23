@@ -288,6 +288,15 @@ app.get('/api/lobby/:lobbyId/file/:filename', (req, res) => {
     }
 })
 
+// 3b. Get active server lobbies (for cross-referencing UCP status in lobby browser)
+app.get('/api/lobbies', (req, res) => {
+    res.json(lobbies.map(l => ({
+        id: l.id,
+        steamLobbyId: l.steamLobbyId,
+        hasCustomUCP: !!l.hasCustomUCP
+    })))
+})
+
 // 3. Get GitHub Extensions Cache
 app.get('/api/github_extensions', async (req, res) => {
     try {

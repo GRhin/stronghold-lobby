@@ -10,6 +10,28 @@ export interface UCPConfig {
 
 // CORE_DLLS are now handled by UCP3 GUI installation and skipped in our sync
 
+// Modules/plugins that ship built-in with UCP3 - never upload these
+const BUILTIN_UCP_MODULES = [
+    'gmResourceModifier-0.2.0.zip',
+    'textResourceModifier-0.3.0.zip',
+    'aicloader-1.1.2.zip',
+    'files-1.3.0.zip',
+    'aivloader-1.0.0.zip',
+    'ucp2-vanilla-fixed-aiv-2.15.1.zip',
+    'ucp2-ai-files-2.15.1.zip',
+    'ucp2-aic-patch-2.15.1.zip',
+    'ucp2-legacy-defaults-2.15.1.zip',
+    'startResources-1.0.1.zip',
+    'maploader-1.1.0.zip',
+]
+// Also skip any ucp-legacy-*.zip by prefix
+const BUILTIN_UCP_PREFIXES = ['ucp-legacy-']
+
+const isBuiltinUCPModule = (zipName: string): boolean => {
+    if (BUILTIN_UCP_MODULES.includes(zipName)) return true
+    return BUILTIN_UCP_PREFIXES.some(prefix => zipName.startsWith(prefix))
+}
+
 // Determine the server URL based on environment
 const isDevelopment = import.meta.env.DEV
 const CACHED_SERVER_URL = isDevelopment
@@ -139,6 +161,13 @@ export const syncUCP = async (
         const ext = item.extension
         const ver = item.version
         const zipName = `${ext}-${ver}.zip`
+
+        // Skip built-in UCP modules that ship with UCP3
+        if (isBuiltinUCPModule(zipName)) {
+            console.log(`Skipping ${zipName} (built-in UCP3 module)`)
+            skipped.push(zipName)
+            continue
+        }
 
         // Check if available on GitHub
         if (githubExtensions.has(zipName)) {

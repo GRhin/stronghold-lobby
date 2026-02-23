@@ -27,17 +27,31 @@ interface Lobby {
 }
 */
 
+const SERVER = import.meta.env.DEV ? 'http://localhost:3000' : 'https://stronghold-lobby.onrender.com'
+
 const LobbyList: React.FC = () => {
     const navigate = useNavigate()
-    // const [lobbies, setLobbies] = useState<Lobby[]>([])
     const [filter, setFilter] = useState('')
     const [showCreateModal, setShowCreateModal] = useState(false)
+    const [serverLobbyMap, setServerLobbyMap] = useState<Map<string, { hasCustomUCP: boolean }>>(new Map())
     const { isServerConnected } = useUser()
     const { lobbies, refreshLobbies, joinLobby, createLobby } = useSteam()
 
+    const refreshServerLobbies = async () => {
+        try {
+            const res = await fetch(`${SERVER}/api/lobbies`)
+            if (res.ok) {
+                const data: Array<{ steamLobbyId: string; hasCustomUCP: boolean }> = await res.json()
+                const map = new Map(data.filter(l => l.steamLobbyId).map(l => [l.steamLobbyId, { hasCustomUCP: l.hasCustomUCP }]))
+                setServerLobbyMap(map)
+            }
+        } catch { /* server may be unavailable */ }
+    }
+
     useEffect(() => {
         refreshLobbies()
-        const interval = setInterval(refreshLobbies, 5000)
+        refreshServerLobbies()
+        const interval = setInterval(() => { refreshLobbies(); refreshServerLobbies() }, 5000)
         return () => clearInterval(interval)
     }, [refreshLobbies])
 
@@ -176,6 +190,14 @@ const LobbyList: React.FC = () => {
                                         {lobby.gameMode === 'extreme' ? '⚡ EXTREME' : '🏰 CRUSADER'}
                                     </span>
                                 </div>
+                                {serverLobbyMap.get(lobby.id)?.hasCustomUCP && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-500">Mods</span>
+                                        <span className="text-xs px-2 py-0.5 rounded font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                                            🎮 Custom UCP
+                                        </span>
+                                    </div>
+                                )}
                             </div>
 
                             <Button
