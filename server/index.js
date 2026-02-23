@@ -210,6 +210,7 @@ app.post('/api/lobby/:lobbyId/upload_chunk', upload.single('chunk'), async (req,
                 if (lobby) {
                     lobby.hasCustomUCP = true
                     io.to(lobbyId).emit('lobby:update', lobby)
+                    io.emit('lobby:list', lobbies) // Broadcast to lobby browser
                 }
             }
 
@@ -238,6 +239,7 @@ app.post('/api/lobby/:lobbyId/upload', upload.single('file'), (req, res) => {
             if (lobby) {
                 lobby.hasCustomUCP = true
                 io.to(lobbyId).emit('lobby:update', lobby)
+                io.emit('lobby:list', lobbies) // Broadcast to lobby browser
             }
         }
 

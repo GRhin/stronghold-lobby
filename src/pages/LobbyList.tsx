@@ -49,9 +49,10 @@ const LobbyList: React.FC = () => {
             setServerLobbyMap(map)
         }
         socket.on('lobby:list', onLobbyList)
-        // Request an immediate snapshot
+        // Request an immediate snapshot, then poll every 5s
         socket.emit('lobby:list')
-        return () => { socket.off('lobby:list', onLobbyList) }
+        const interval = setInterval(() => socket.emit('lobby:list'), 5000)
+        return () => { socket.off('lobby:list', onLobbyList); clearInterval(interval) }
     }, [])
 
     useEffect(() => {
