@@ -41,19 +41,29 @@ const LobbyList: React.FC = () => {
     // Listen to server lobby:list socket events to pick up hasCustomUCP
     useEffect(() => {
         const onLobbyList = (serverLobbies: Array<{ steamLobbyId?: string; hasCustomUCP?: boolean }>) => {
+            console.log('[LobbyList] server lobby:list:', serverLobbies.map(l => ({
+                steamLobbyId: l.steamLobbyId,
+                hasCustomUCP: l.hasCustomUCP
+            })))
             const map = new Map(
                 serverLobbies
                     .filter(l => l.steamLobbyId)
                     .map(l => [l.steamLobbyId!, { hasCustomUCP: !!l.hasCustomUCP }])
             )
+            console.log('[LobbyList] map keys:', Array.from(map.keys()))
             setServerLobbyMap(map)
         }
         socket.on('lobby:list', onLobbyList)
-        // Request an immediate snapshot, then poll every 5s
         socket.emit('lobby:list')
         const interval = setInterval(() => socket.emit('lobby:list'), 5000)
         return () => { socket.off('lobby:list', onLobbyList); clearInterval(interval) }
     }, [])
+
+    useEffect(() => {
+        if (lobbies.length > 0) {
+            console.log('[LobbyList] Steam lobby IDs:', lobbies.map(l => l.id))
+        }
+    }, [lobbies])
 
     useEffect(() => {
         refreshLobbies()
