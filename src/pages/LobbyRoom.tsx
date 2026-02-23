@@ -256,17 +256,20 @@ const LobbyRoom: React.FC = () => {
                 // 2. "Desync" check: Server has group (persistent), but Steam only has me (split/broken)
                 const isLobbyDesync = serverCount > 1 && steamCount === 1
 
-                // 3. "ID Mismatch" check: The lobby ID changed (e.g. game created new one), but Server has old one.
-                const isIdMismatch = serverSteamId && currentSteamId && serverSteamId !== currentSteamId
+                // 3. "ID Mismatch" check: The lobby ID changed OR is missing on server
+                const isIdMismatch = currentSteamId && (!serverSteamId || serverSteamId !== currentSteamId)
 
                 if (isIdMismatch && isServerHost) {
                     // Check if this mismatch is due to a pending update we initiated
-                    if (pendingLobbyIdRef.current && serverSteamId === pendingLobbyIdRef.current) {
+                    if (pendingLobbyIdRef.current && currentSteamId === pendingLobbyIdRef.current) {
                         console.log('Host Reform: Ignoring mismatch due to pending state update')
                         return
                     }
 
-                    console.log('Host Reform: ID Mismatch detected. Updating Server...')
+                    console.log('Host Reform: ID Mismatch/Missing detected. Updating Server...', {
+                        server: serverSteamId,
+                        current: currentSteamId
+                    })
                     // Only revert if we are SURE. If we have a pending ID, we assume logic elsewhere handles it.
                     if (!pendingLobbyIdRef.current) {
                         socket.emit('lobby:set_steam_id', { steamLobbyId: currentSteamId })

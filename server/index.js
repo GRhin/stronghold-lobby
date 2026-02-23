@@ -711,7 +711,7 @@ io.on('connection', (socket) => {
             map: data.map || 'Unknown',
             maxPlayers: data.maxPlayers || 8,
             isRated: !!data.isRated,
-            steamLobbyId: null,
+            steamLobbyId: data.steamLobbyId || null,
             status: 'Open',
             hasCustomUCP: false,
             players: [{

@@ -59,15 +59,10 @@ export const SteamProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                     maxPlayers: maxMembers,
                     isRated: isRated,
                     hostName: user?.name,
-                    map: 'Unknown'
+                    map: 'Unknown',
+                    steamLobbyId: result.id // Pass the ID immediately
                 })
             }
-
-            // Link the two by setting the steam ID on the server lobby we just joined
-            // verify we are creating the connection after a short delay to ensure server processed create? 
-            // Actually, socket events are sequential. But 'lobby:create' logic joins the room immediately.
-            // So we can emit set_steam_id right after.
-            socket.emit('lobby:set_steam_id', { steamLobbyId: result.id })
 
             // Notify server for game launch coordination
             socket.emit('steam:lobby_joined', result.id)
