@@ -35,6 +35,20 @@ const LobbyRoom: React.FC = () => {
     const [chatInput, setChatInput] = useState('')
     const [launchStatus, setLaunchStatus] = useState<string | null>(null)
     const [serverLobby, setServerLobby] = useState<any>(null)
+
+    useEffect(() => {
+        if (serverLobby) {
+            console.log('[LobbyRoom] serverLobby updated:', {
+                id: serverLobby.id,
+                steamLobbyId: serverLobby.steamLobbyId,
+                hasCustomUCP: serverLobby.hasCustomUCP,
+                playerCount: serverLobby.players?.length
+            })
+        } else {
+            console.log('[LobbyRoom] serverLobby is null')
+        }
+    }, [serverLobby])
+
     const [showResultModal, setShowResultModal] = useState(false)
     const [hasCustomMod, setHasCustomMod] = useState(false)
     const [ucpModules, setUcpModules] = useState<Array<{ name: string, version: string, type: 'module' | 'plugin', size?: number }>>([])
