@@ -3,7 +3,7 @@ import Button from '../components/Button'
 import CreateLobbyModal from '../components/CreateLobbyModal'
 import { useUser } from '../context/UserContext'
 import { useNavigate } from 'react-router-dom'
-// import { socket } from '../socket'
+import { socket } from '../socket'
 import { useSteam } from '../context/SteamContext'
 
 /*
@@ -27,31 +27,36 @@ interface Lobby {
 }
 */
 
-const SERVER = import.meta.env.DEV ? 'http://localhost:3000' : 'https://stronghold-lobby.onrender.com'
+
 
 const LobbyList: React.FC = () => {
     const navigate = useNavigate()
     const [filter, setFilter] = useState('')
     const [showCreateModal, setShowCreateModal] = useState(false)
+    // Map from steamLobbyId -> { hasCustomUCP } derived from socket lobby:list events
     const [serverLobbyMap, setServerLobbyMap] = useState<Map<string, { hasCustomUCP: boolean }>>(new Map())
     const { isServerConnected } = useUser()
     const { lobbies, refreshLobbies, joinLobby, createLobby } = useSteam()
 
-    const refreshServerLobbies = async () => {
-        try {
-            const res = await fetch(`${SERVER}/api/lobbies`)
-            if (res.ok) {
-                const data: Array<{ steamLobbyId: string; hasCustomUCP: boolean }> = await res.json()
-                const map = new Map(data.filter(l => l.steamLobbyId).map(l => [l.steamLobbyId, { hasCustomUCP: l.hasCustomUCP }]))
-                setServerLobbyMap(map)
-            }
-        } catch { /* server may be unavailable */ }
-    }
+    // Listen to server lobby:list socket events to pick up hasCustomUCP
+    useEffect(() => {
+        const onLobbyList = (serverLobbies: Array<{ steamLobbyId?: string; hasCustomUCP?: boolean }>) => {
+            const map = new Map(
+                serverLobbies
+                    .filter(l => l.steamLobbyId)
+                    .map(l => [l.steamLobbyId!, { hasCustomUCP: !!l.hasCustomUCP }])
+            )
+            setServerLobbyMap(map)
+        }
+        socket.on('lobby:list', onLobbyList)
+        // Request an immediate snapshot
+        socket.emit('lobby:list')
+        return () => { socket.off('lobby:list', onLobbyList) }
+    }, [])
 
     useEffect(() => {
         refreshLobbies()
-        refreshServerLobbies()
-        const interval = setInterval(() => { refreshLobbies(); refreshServerLobbies() }, 5000)
+        const interval = setInterval(refreshLobbies, 5000)
         return () => clearInterval(interval)
     }, [refreshLobbies])
 
